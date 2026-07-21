@@ -5,6 +5,8 @@ const TOOLS: { type: ToolType; label: string }[] = [
   { type: "arrow", label: "Arrow" },
   { type: "rect", label: "Rectangle" },
   { type: "ellipse", label: "Ellipse" },
+  { type: "pen", label: "Pen" },
+  { type: "highlighter", label: "Highlighter" },
 ];
 
 interface Props {

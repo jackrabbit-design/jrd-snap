@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { Stage, Layer, Image as KonvaImage, Arrow, Rect, Ellipse } from "react-konva";
+import { Stage, Layer, Image as KonvaImage, Arrow, Rect, Ellipse, Line } from "react-konva";
 import useImage from "use-image";
 import type { EditorState, Shape } from "./toolState";
 import { addShape } from "./toolState";
@@ -29,6 +29,14 @@ export default function AnnotationCanvas({ imageSrc, state, color, strokeWidth, 
     let shape: Shape;
     if (state.tool === "arrow") {
       shape = { id, type: "arrow", color, strokeWidth, points: [pos.x, pos.y, pos.x, pos.y] };
+    } else if (state.tool === "pen" || state.tool === "highlighter") {
+      shape = {
+        id,
+        type: state.tool,
+        color,
+        strokeWidth: state.tool === "highlighter" ? strokeWidth * 4 : strokeWidth,
+        points: [pos.x, pos.y],
+      };
     } else if (state.tool === "rect" || state.tool === "ellipse") {
       shape = {
         id,
@@ -57,6 +65,8 @@ export default function AnnotationCanvas({ imageSrc, state, color, strokeWidth, 
     let updated: Shape;
     if (current.type === "arrow") {
       updated = { ...current, points: [current.points[0], current.points[1], pos.x, pos.y] };
+    } else if (current.type === "pen" || current.type === "highlighter") {
+      updated = { ...current, points: [...current.points, pos.x, pos.y] };
     } else if (current.type === "rect" || current.type === "ellipse") {
       updated = { ...current, width: pos.x - current.x, height: pos.y - current.y };
     } else {
@@ -90,6 +100,20 @@ export default function AnnotationCanvas({ imageSrc, state, color, strokeWidth, 
                 stroke={shape.color}
                 strokeWidth={shape.strokeWidth}
                 fill={shape.color}
+              />
+            );
+          }
+          if (shape.type === "pen" || shape.type === "highlighter") {
+            return (
+              <Line
+                key={shape.id}
+                points={shape.points}
+                stroke={shape.color}
+                strokeWidth={shape.strokeWidth}
+                opacity={shape.type === "highlighter" ? 0.4 : 1}
+                lineCap="round"
+                lineJoin="round"
+                tension={0}
               />
             );
           }
