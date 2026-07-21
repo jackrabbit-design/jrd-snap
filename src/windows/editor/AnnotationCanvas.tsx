@@ -1,8 +1,8 @@
 import { useRef } from "react";
-import { Stage, Layer, Image as KonvaImage, Arrow, Rect, Ellipse, Line } from "react-konva";
+import { Stage, Layer, Image as KonvaImage, Arrow, Rect, Ellipse, Line, Text } from "react-konva";
 import useImage from "use-image";
-import type { EditorState, Shape } from "./toolState";
-import { addShape } from "./toolState";
+import type { EditorState, Shape, TextShape } from "./toolState";
+import { addShape, updateShape } from "./toolState";
 
 interface Props {
   imageSrc: string;
@@ -26,6 +26,11 @@ export default function AnnotationCanvas({ imageSrc, state, color, strokeWidth, 
     if (state.tool === "select") return;
     const pos = e.target.getStage().getPointerPosition();
     const id = newId();
+    if (state.tool === "text") {
+      const shape: TextShape = { id, type: "text", color, strokeWidth, x: pos.x, y: pos.y, text: "Text", fontSize: 20 };
+      onStateChange(addShape(state, shape));
+      return;
+    }
     let shape: Shape;
     if (state.tool === "arrow") {
       shape = { id, type: "arrow", color, strokeWidth, points: [pos.x, pos.y, pos.x, pos.y] };
@@ -140,6 +145,26 @@ export default function AnnotationCanvas({ imageSrc, state, color, strokeWidth, 
                 radiusY={Math.abs(shape.height) / 2}
                 stroke={shape.color}
                 strokeWidth={shape.strokeWidth}
+              />
+            );
+          }
+          if (shape.type === "text") {
+            return (
+              <Text
+                key={shape.id}
+                x={shape.x}
+                y={shape.y}
+                text={shape.text}
+                fontSize={shape.fontSize}
+                fill={shape.color}
+                draggable
+                onDragEnd={(e) => onStateChange(updateShape(state, shape.id, { x: e.target.x(), y: e.target.y() }))}
+                onDblClick={() => {
+                  const next = window.prompt("Edit text", shape.text);
+                  if (next !== null) {
+                    onStateChange(updateShape(state, shape.id, { text: next }));
+                  }
+                }}
               />
             );
           }
