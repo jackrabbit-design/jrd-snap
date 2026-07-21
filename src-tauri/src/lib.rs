@@ -3,6 +3,7 @@ mod tray;
 mod filename;
 mod object_key;
 mod settings;
+mod commands;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -13,7 +14,13 @@ fn greet(name: &str) -> String {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            commands::get_upload_settings,
+            commands::save_upload_settings,
+            commands::save_credentials,
+            commands::has_credentials,
+        ])
         .setup(|app| {
             tray::build_tray(app.handle())?;
             Ok(())

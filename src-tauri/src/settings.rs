@@ -8,6 +8,7 @@ pub enum Provider {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct UploadSettings {
     pub provider: Provider,
     pub bucket: String,
