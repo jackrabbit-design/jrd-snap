@@ -1,11 +1,12 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 mod tray;
+mod capture;
 mod filename;
 mod object_key;
 mod settings;
 mod commands;
 
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Listener, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 #[tauri::command]
@@ -33,6 +34,24 @@ pub(crate) fn register_shortcuts(app: &tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+pub(crate) fn open_editor_with_png(app: &tauri::AppHandle, png_bytes: Vec<u8>) {
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&png_bytes);
+    if let Some(win) = app.get_webview_window("editor") {
+        if let Err(e) = win.show() {
+            eprintln!("failed to show editor window: {e}");
+        }
+        if let Err(e) = win.set_focus() {
+            eprintln!("failed to focus editor window: {e}");
+        }
+        if let Err(e) = app.emit_to("editor", "editor-load-image", b64) {
+            eprintln!("failed to emit editor-load-image: {e}");
+        }
+    } else {
+        eprintln!("editor window missing");
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -48,12 +67,41 @@ pub fn run() {
             commands::save_hotkey_settings,
             commands::show_overlay,
             commands::hide_overlay,
+            commands::capture_full_screen,
+            commands::capture_area,
         ])
         .setup(|app| {
             tray::build_tray(app.handle())?;
             if let Err(e) = register_shortcuts(app.handle()) {
                 eprintln!("failed to register global shortcuts: {e}");
             }
+
+            let handle = app.handle().clone();
+            app.listen("trigger-capture-full", move |_event| {
+                match capture::capture_full_screen_png() {
+                    Ok(bytes) => open_editor_with_png(&handle, bytes),
+                    Err(e) => eprintln!("capture_full_screen_png failed: {e}"),
+                }
+            });
+
+            let handle2 = app.handle().clone();
+            app.listen("trigger-capture-area", move |_event| {
+                if let Err(e) = commands::show_overlay(handle2.clone()) {
+                    eprintln!("show_overlay failed: {e}");
+                }
+            });
+
+            let handle3 = app.handle().clone();
+            app.listen("overlay-selection", move |event| {
+                match serde_json::from_str::<capture::CaptureRect>(event.payload()) {
+                    Ok(rect) => match capture::capture_area_png(rect) {
+                        Ok(bytes) => open_editor_with_png(&handle3, bytes),
+                        Err(e) => eprintln!("capture_area_png failed: {e}"),
+                    },
+                    Err(e) => eprintln!("failed to parse overlay-selection payload: {e}"),
+                }
+            });
+
             Ok(())
         })
         .run(tauri::generate_context!())

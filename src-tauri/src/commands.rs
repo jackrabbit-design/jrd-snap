@@ -1,3 +1,4 @@
+use crate::capture::{self, CaptureRect};
 use crate::settings::{
     self, CredentialStore, Credentials, HotkeySettings, KeyringCredentialStore, UploadSettings,
 };
@@ -49,4 +50,14 @@ pub fn show_overlay(app: AppHandle) -> Result<(), String> {
 pub fn hide_overlay(app: AppHandle) -> Result<(), String> {
     let win = app.get_webview_window("overlay").ok_or("overlay window missing")?;
     win.hide().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn capture_full_screen() -> Result<Vec<u8>, String> {
+    capture::capture_full_screen_png()
+}
+
+#[tauri::command]
+pub fn capture_area(rect: CaptureRect) -> Result<Vec<u8>, String> {
+    capture::capture_area_png(rect)
 }

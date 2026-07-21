@@ -17,8 +17,14 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         .icon(app.default_window_icon().unwrap().clone())
         .on_menu_event(|app, event| match event.id.as_ref() {
             "capture_area" => {
-                let _ = crate::commands::show_overlay(app.clone());
+                if let Err(e) = crate::commands::show_overlay(app.clone()) {
+                    eprintln!("show_overlay failed: {e}");
+                }
             }
+            "capture_full" => match crate::capture::capture_full_screen_png() {
+                Ok(bytes) => crate::open_editor_with_png(app, bytes),
+                Err(e) => eprintln!("capture_full_screen_png failed: {e}"),
+            },
             "open_settings" => {
                 if let Some(win) = app.get_webview_window("settings") {
                     let _ = win.show();

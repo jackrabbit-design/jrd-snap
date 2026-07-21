@@ -36,7 +36,16 @@ export default function OverlayApp() {
       await invoke("hide_overlay");
       return;
     }
-    await emit("overlay-selection", { x, y, width, height });
+    // Convert from logical/CSS pixels (browser mouse coordinates) to physical
+    // pixels, since xcap's capture_image() returns full-resolution physical
+    // pixels. On HiDPI displays (devicePixelRatio !== 1) these spaces differ.
+    const dpr = window.devicePixelRatio;
+    await emit("overlay-selection", {
+      x: Math.round(x * dpr),
+      y: Math.round(y * dpr),
+      width: Math.round(width * dpr),
+      height: Math.round(height * dpr),
+    });
     await invoke("hide_overlay");
   }
 

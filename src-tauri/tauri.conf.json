@@ -36,6 +36,14 @@
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "fullscreen": true
+      },
+      {
+        "label": "editor",
+        "title": "pxl Editor",
+        "url": "index.html#/editor",
+        "width": 900,
+        "height": 700,
+        "visible": false
       }
     ],
     "security": {
