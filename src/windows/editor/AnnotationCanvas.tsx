@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { forwardRef, useEffect, useRef } from "react";
 import { Stage, Layer, Image as KonvaImage, Arrow, Rect, Ellipse, Line, Text } from "react-konva";
 import useImage from "use-image";
 import Konva from "konva";
@@ -47,7 +47,10 @@ function newId(): string {
   return `shape-${nextId}`;
 }
 
-export default function AnnotationCanvas({ imageSrc, state, color, strokeWidth, onStateChange }: Props) {
+const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanvas(
+  { imageSrc, state, color, strokeWidth, onStateChange },
+  ref,
+) {
   const [image] = useImage(imageSrc);
   const drawing = useRef<string | null>(null);
 
@@ -117,6 +120,7 @@ export default function AnnotationCanvas({ imageSrc, state, color, strokeWidth, 
 
   return (
     <Stage
+      ref={ref}
       width={image?.width ?? 800}
       height={image?.height ?? 600}
       onMouseDown={handleMouseDown}
@@ -219,4 +223,6 @@ export default function AnnotationCanvas({ imageSrc, state, color, strokeWidth, 
       </Layer>
     </Stage>
   );
-}
+});
+
+export default AnnotationCanvas;

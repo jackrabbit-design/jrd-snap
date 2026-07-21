@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import type Konva from "konva";
 import AnnotationCanvas from "./AnnotationCanvas";
 import Toolbar from "./Toolbar";
 import { applyCrop, initialState, setTool, type EditorState } from "./toolState";
@@ -9,6 +10,7 @@ export default function EditorApp() {
   const [state, setState] = useState<EditorState>(initialState);
   const [color, setColor] = useState("#ff0000");
   const [strokeWidth, setStrokeWidth] = useState(3);
+  const stageRef = useRef<Konva.Stage>(null);
 
   useEffect(() => {
     const unlisten = listen<string>("editor-load-image", (event) => {
@@ -63,6 +65,7 @@ export default function EditorApp() {
       )}
       <div id="editor-canvas-container" style={{ flex: 1, overflow: "auto" }}>
         <AnnotationCanvas
+          ref={stageRef}
           imageSrc={imageSrc}
           state={state}
           color={color}
