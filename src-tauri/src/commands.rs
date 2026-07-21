@@ -35,6 +35,5 @@ pub fn get_hotkey_settings(app: AppHandle) -> Result<HotkeySettings, String> {
 pub fn save_hotkey_settings(app: AppHandle, hotkeys: HotkeySettings) -> Result<(), String> {
     let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     settings::save_hotkeys(&dir, &hotkeys)?;
-    crate::register_shortcuts(&app);
-    Ok(())
+    crate::register_shortcuts(&app)
 }

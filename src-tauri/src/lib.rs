@@ -13,20 +13,24 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
-pub(crate) fn register_shortcuts(app: &tauri::AppHandle) {
-    let hotkeys = settings::load_hotkeys(&app.path().app_config_dir().unwrap());
+pub(crate) fn register_shortcuts(app: &tauri::AppHandle) -> Result<(), String> {
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let hotkeys = settings::load_hotkeys(&dir);
     let gs = app.global_shortcut();
-    let _ = gs.unregister_all();
-    let _ = gs.on_shortcut(hotkeys.capture_area.as_str(), |app, _shortcut, event| {
+    gs.unregister_all().map_err(|e| e.to_string())?;
+    gs.on_shortcut(hotkeys.capture_area.as_str(), |app, _shortcut, event| {
         if event.state() == ShortcutState::Pressed {
             app.emit("trigger-capture-area", ()).ok();
         }
-    });
-    let _ = gs.on_shortcut(hotkeys.capture_full.as_str(), |app, _shortcut, event| {
+    })
+    .map_err(|e| format!("capture_area shortcut \"{}\": {e}", hotkeys.capture_area))?;
+    gs.on_shortcut(hotkeys.capture_full.as_str(), |app, _shortcut, event| {
         if event.state() == ShortcutState::Pressed {
             app.emit("trigger-capture-full", ()).ok();
         }
-    });
+    })
+    .map_err(|e| format!("capture_full shortcut \"{}\": {e}", hotkeys.capture_full))?;
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -45,7 +49,9 @@ pub fn run() {
         ])
         .setup(|app| {
             tray::build_tray(app.handle())?;
-            register_shortcuts(app.handle());
+            if let Err(e) = register_shortcuts(app.handle()) {
+                eprintln!("failed to register global shortcuts: {e}");
+            }
             Ok(())
         })
         .run(tauri::generate_context!())
