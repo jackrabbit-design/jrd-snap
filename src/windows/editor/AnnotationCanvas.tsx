@@ -159,6 +159,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
             return (
               <Rect
                 key={shape.id}
+                name="crop-shape"
                 x={shape.x}
                 y={shape.y}
                 width={shape.width}

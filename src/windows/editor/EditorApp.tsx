@@ -57,6 +57,14 @@ export default function EditorApp() {
     if (!stageRef.current) return;
     setUploading(true);
     setError(null);
+    // Any unapplied crop selection is an uncommitted UI overlay, not a real
+    // annotation — hide it on the stage before exporting so it isn't baked
+    // into the uploaded PNG, then restore it in case the upload fails.
+    const cropNodes = stageRef.current.find(".crop-shape");
+    cropNodes.forEach((node) => {
+      node.hide();
+    });
+    stageRef.current.batchDraw();
     try {
       const bytes = exportStageToBytes(stageRef.current);
       const url = await uploadFile(bytes, "png");
@@ -66,6 +74,10 @@ export default function EditorApp() {
     } catch (e) {
       setError(String(e));
     } finally {
+      cropNodes.forEach((node) => {
+        node.show();
+      });
+      stageRef.current.batchDraw();
       setUploading(false);
     }
   }
