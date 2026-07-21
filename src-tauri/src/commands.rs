@@ -37,3 +37,16 @@ pub fn save_hotkey_settings(app: AppHandle, hotkeys: HotkeySettings) -> Result<(
     settings::save_hotkeys(&dir, &hotkeys)?;
     crate::register_shortcuts(&app)
 }
+
+#[tauri::command]
+pub fn show_overlay(app: AppHandle) -> Result<(), String> {
+    let win = app.get_webview_window("overlay").ok_or("overlay window missing")?;
+    win.show().map_err(|e| e.to_string())?;
+    win.set_focus().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn hide_overlay(app: AppHandle) -> Result<(), String> {
+    let win = app.get_webview_window("overlay").ok_or("overlay window missing")?;
+    win.hide().map_err(|e| e.to_string())
+}

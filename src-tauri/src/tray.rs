@@ -16,6 +16,9 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         .menu(&menu)
         .icon(app.default_window_icon().unwrap().clone())
         .on_menu_event(|app, event| match event.id.as_ref() {
+            "capture_area" => {
+                let _ = crate::commands::show_overlay(app.clone());
+            }
             "open_settings" => {
                 if let Some(win) = app.get_webview_window("settings") {
                     let _ = win.show();

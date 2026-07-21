@@ -46,6 +46,8 @@ pub fn run() {
             commands::has_credentials,
             commands::get_hotkey_settings,
             commands::save_hotkey_settings,
+            commands::show_overlay,
+            commands::hide_overlay,
         ])
         .setup(|app| {
             tray::build_tray(app.handle())?;
