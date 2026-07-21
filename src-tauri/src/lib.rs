@@ -2,6 +2,7 @@
 mod tray;
 mod filename;
 mod object_key;
+mod settings;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
