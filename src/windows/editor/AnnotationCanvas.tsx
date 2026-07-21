@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { Stage, Layer, Image as KonvaImage, Arrow, Rect, Ellipse } from "react-konva";
 import useImage from "use-image";
 import type { EditorState, Shape } from "./toolState";
@@ -20,17 +20,17 @@ function newId(): string {
 
 export default function AnnotationCanvas({ imageSrc, state, color, strokeWidth, onStateChange }: Props) {
   const [image] = useImage(imageSrc);
-  const drawing = useRef<Shape | null>(null);
-  const [, forceRerender] = useState(0);
+  const drawing = useRef<string | null>(null);
 
   function handleMouseDown(e: any) {
     if (state.tool === "select") return;
     const pos = e.target.getStage().getPointerPosition();
     const id = newId();
+    let shape: Shape;
     if (state.tool === "arrow") {
-      drawing.current = { id, type: "arrow", color, strokeWidth, points: [pos.x, pos.y, pos.x, pos.y] };
+      shape = { id, type: "arrow", color, strokeWidth, points: [pos.x, pos.y, pos.x, pos.y] };
     } else if (state.tool === "rect" || state.tool === "ellipse") {
-      drawing.current = {
+      shape = {
         id,
         type: state.tool,
         color,
@@ -43,25 +43,28 @@ export default function AnnotationCanvas({ imageSrc, state, color, strokeWidth, 
     } else {
       return;
     }
-    onStateChange(addShape(state, drawing.current));
+    drawing.current = id;
+    onStateChange(addShape(state, shape));
   }
 
   function handleMouseMove(e: any) {
     if (!drawing.current) return;
     const pos = e.target.getStage().getPointerPosition();
-    const shapes = state.shapes.slice();
-    const idx = shapes.findIndex((s) => s.id === drawing.current!.id);
-    if (idx === -1) return;
-    const current = drawing.current;
+    // The shape being drawn is always the last item in the array.
+    const idx = state.shapes.length - 1;
+    const current = state.shapes[idx];
+    if (!current || current.id !== drawing.current) return;
+    let updated: Shape;
     if (current.type === "arrow") {
-      current.points = [current.points[0], current.points[1], pos.x, pos.y];
+      updated = { ...current, points: [current.points[0], current.points[1], pos.x, pos.y] };
     } else if (current.type === "rect" || current.type === "ellipse") {
-      current.width = pos.x - current.x;
-      current.height = pos.y - current.y;
+      updated = { ...current, width: pos.x - current.x, height: pos.y - current.y };
+    } else {
+      return;
     }
-    shapes[idx] = { ...current };
+    const shapes = state.shapes.slice();
+    shapes[idx] = updated;
     onStateChange({ ...state, shapes });
-    forceRerender((n) => n + 1);
   }
 
   function handleMouseUp() {
