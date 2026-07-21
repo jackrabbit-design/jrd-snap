@@ -13,7 +13,7 @@ export interface UploadSettings {
 }
 
 export function getUploadSettings(): Promise<UploadSettings> {
-  return invoke("get_upload_settings");
+  return invoke<UploadSettings>("get_upload_settings");
 }
 
 export function saveUploadSettings(settings: UploadSettings): Promise<void> {

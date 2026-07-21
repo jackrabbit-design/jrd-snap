@@ -25,21 +25,27 @@ export default function UploadConfigForm() {
   const [status, setStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    getUploadSettings().then(setSettings);
+    getUploadSettings()
+      .then(setSettings)
+      .catch((err) => setStatus(`Failed to load settings: ${err}`));
     hasCredentials().then(setCredsSaved);
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    await saveUploadSettings(settings);
-    if (accessKeyId && secretAccessKey) {
-      await saveCredentials(accessKeyId, secretAccessKey);
-      setAccessKeyId("");
-      setSecretAccessKey("");
-      setCredsSaved(true);
+    try {
+      await saveUploadSettings(settings);
+      if (accessKeyId && secretAccessKey) {
+        await saveCredentials(accessKeyId, secretAccessKey);
+        setAccessKeyId("");
+        setSecretAccessKey("");
+        setCredsSaved(true);
+      }
+      setStatus("Saved");
+      setTimeout(() => setStatus(null), 2000);
+    } catch (err) {
+      setStatus(`Save failed: ${err}`);
     }
-    setStatus("Saved");
-    setTimeout(() => setStatus(null), 2000);
   }
 
   function field(key: keyof UploadSettings, value: string) {

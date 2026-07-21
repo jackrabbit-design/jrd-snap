@@ -2,8 +2,9 @@ use crate::settings::{self, CredentialStore, Credentials, KeyringCredentialStore
 use tauri::{AppHandle, Manager};
 
 #[tauri::command]
-pub fn get_upload_settings(app: AppHandle) -> UploadSettings {
-    settings::load_settings(&app.path().app_config_dir().unwrap())
+pub fn get_upload_settings(app: AppHandle) -> Result<UploadSettings, String> {
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    Ok(settings::load_settings(&dir))
 }
 
 #[tauri::command]
