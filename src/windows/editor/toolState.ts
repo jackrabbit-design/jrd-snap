@@ -11,16 +11,17 @@ export type ToolType =
 
 export interface ShapeBase {
   id: string;
-  type: ToolType;
   color: string;
   strokeWidth: number;
 }
 
 export interface PointShape extends ShapeBase {
+  type: "arrow" | "pen" | "highlighter";
   points: number[];
 }
 
 export interface BoxShape extends ShapeBase {
+  type: "rect" | "ellipse" | "blur" | "crop";
   x: number;
   y: number;
   width: number;
@@ -28,6 +29,7 @@ export interface BoxShape extends ShapeBase {
 }
 
 export interface TextShape extends ShapeBase {
+  type: "text";
   x: number;
   y: number;
   text: string;
@@ -56,11 +58,9 @@ export function addShape(state: EditorState, shape: Shape): EditorState {
   return { ...state, shapes: [...state.shapes, shape] };
 }
 
-export function updateShape(
-  state: EditorState,
-  id: string,
-  patch: Partial<Shape>,
-): EditorState {
+export type ShapePatch = Partial<PointShape> | Partial<BoxShape> | Partial<TextShape>;
+
+export function updateShape(state: EditorState, id: string, patch: ShapePatch): EditorState {
   return {
     ...state,
     shapes: state.shapes.map((s) => (s.id === id ? ({ ...s, ...patch } as Shape) : s)),

@@ -7,10 +7,16 @@ import {
   removeShape,
   selectShape,
   type BoxShape,
+  type Shape,
+  type TextShape,
 } from "./toolState";
 
 function rectShape(id: string): BoxShape {
   return { id, type: "rect", color: "#ff0000", strokeWidth: 2, x: 0, y: 0, width: 10, height: 10 };
+}
+
+function textShape(id: string): TextShape {
+  return { id, type: "text", color: "#000000", strokeWidth: 1, x: 0, y: 0, text: "hello", fontSize: 12 };
 }
 
 describe("toolState", () => {
@@ -64,5 +70,17 @@ describe("toolState", () => {
     expect(selected.selectedId).toBe("a");
     const cleared = selectShape(selected, null);
     expect(cleared.selectedId).toBeNull();
+  });
+
+  it("narrows a Shape to TextShape via its type discriminant", () => {
+    const shape: Shape = textShape("t");
+    if (shape.type === "text") {
+      // If Shape were not a true discriminated union, `shape.text` would not
+      // type-check here (it would fail `tsc`/`npm run build`, not just this assertion).
+      expect(shape.text).toBe("hello");
+      expect(shape.fontSize).toBe(12);
+    } else {
+      throw new Error("expected shape to narrow to TextShape");
+    }
   });
 });
