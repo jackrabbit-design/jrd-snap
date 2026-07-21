@@ -91,16 +91,20 @@ pub fn run() {
                 }
             });
 
-            let handle3 = app.handle().clone();
-            app.listen("overlay-selection", move |event| {
-                match serde_json::from_str::<capture::CaptureRect>(event.payload()) {
-                    Ok(rect) => match capture::capture_area_png(rect) {
-                        Ok(bytes) => open_editor_with_png(&handle3, bytes),
-                        Err(e) => eprintln!("capture_area_png failed: {e}"),
-                    },
-                    Err(e) => eprintln!("failed to parse overlay-selection payload: {e}"),
-                }
-            });
+            if let Some(overlay_window) = app.get_webview_window("overlay") {
+                let handle3 = app.handle().clone();
+                overlay_window.listen("overlay-selection", move |event| {
+                    match serde_json::from_str::<capture::CaptureRect>(event.payload()) {
+                        Ok(rect) => match capture::capture_area_png(rect) {
+                            Ok(bytes) => open_editor_with_png(&handle3, bytes),
+                            Err(e) => eprintln!("capture_area_png failed: {e}"),
+                        },
+                        Err(e) => eprintln!("failed to parse overlay-selection payload: {e}"),
+                    }
+                });
+            } else {
+                eprintln!("overlay window missing; overlay-selection listener not registered");
+            }
 
             Ok(())
         })
