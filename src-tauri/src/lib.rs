@@ -58,6 +58,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .invoke_handler(tauri::generate_handler![
             greet,
             commands::get_upload_settings,
@@ -70,6 +72,7 @@ pub fn run() {
             commands::hide_overlay,
             commands::capture_full_screen,
             commands::capture_area,
+            commands::upload_file,
         ])
         .setup(|app| {
             tray::build_tray(app.handle())?;

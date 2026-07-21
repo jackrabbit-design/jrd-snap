@@ -1,7 +1,10 @@
 use crate::capture::{self, CaptureRect};
+use crate::filename;
+use crate::object_key::build_object_key;
 use crate::settings::{
     self, CredentialStore, Credentials, HotkeySettings, KeyringCredentialStore, UploadSettings,
 };
+use crate::upload::{build_public_url, upload_object};
 use tauri::{AppHandle, Manager};
 
 #[tauri::command]
@@ -60,4 +63,21 @@ pub fn capture_full_screen() -> Result<Vec<u8>, String> {
 #[tauri::command]
 pub fn capture_area(rect: CaptureRect) -> Result<Vec<u8>, String> {
     capture::capture_area_png(rect)
+}
+
+#[tauri::command]
+pub async fn upload_file(app: AppHandle, bytes: Vec<u8>, extension: String) -> Result<String, String> {
+    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let settings = settings::load_settings(&config_dir);
+    let creds = KeyringCredentialStore
+        .get()
+        .ok_or("no upload credentials configured — open Settings and add them")?;
+
+    let name = filename::generate_filename(settings.filename_prefix.as_deref(), &extension);
+    let key = build_object_key(settings.key_prefix.as_deref(), &name);
+    let content_type = if extension == "png" { "image/png" } else { "application/octet-stream" };
+
+    upload_object(&settings, &creds, &key, bytes, content_type).await?;
+
+    Ok(build_public_url(&settings, &key))
 }

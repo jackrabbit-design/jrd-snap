@@ -46,3 +46,7 @@ export function getHotkeySettings(): Promise<HotkeySettings> {
 export function saveHotkeySettings(hotkeys: HotkeySettings): Promise<void> {
   return invoke("save_hotkey_settings", { hotkeys });
 }
+
+export function uploadFile(bytes: Uint8Array, extension: string): Promise<string> {
+  return invoke("upload_file", { bytes: Array.from(bytes), extension });
+}

@@ -1,8 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { sendNotification } from "@tauri-apps/plugin-notification";
 import type Konva from "konva";
 import AnnotationCanvas from "./AnnotationCanvas";
 import Toolbar from "./Toolbar";
+import { exportStageToBytes } from "./export";
+import { uploadFile } from "../../lib/api";
 import { applyCrop, initialState, setTool, type EditorState } from "./toolState";
 
 export default function EditorApp() {
@@ -10,6 +15,8 @@ export default function EditorApp() {
   const [state, setState] = useState<EditorState>(initialState);
   const [color, setColor] = useState("#ff0000");
   const [strokeWidth, setStrokeWidth] = useState(3);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const stageRef = useRef<Konva.Stage>(null);
 
   useEffect(() => {
@@ -46,6 +53,23 @@ export default function EditorApp() {
     img.src = imageSrc;
   }
 
+  async function handleSaveAndUpload() {
+    if (!stageRef.current) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const bytes = exportStageToBytes(stageRef.current);
+      const url = await uploadFile(bytes, "png");
+      await writeText(url);
+      await sendNotification({ title: "pxl", body: `Uploaded — link copied to clipboard\n${url}` });
+      await getCurrentWindow().hide();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setUploading(false);
+    }
+  }
+
   if (!imageSrc) {
     return <div style={{ padding: 16 }}>Waiting for capture…</div>;
   }
@@ -60,6 +84,14 @@ export default function EditorApp() {
         onColorChange={setColor}
         onStrokeWidthChange={setStrokeWidth}
       />
+      <button type="button" onClick={handleSaveAndUpload} disabled={uploading}>
+        {uploading ? "Uploading…" : "Save & Upload"}
+      </button>
+      {error && (
+        <div style={{ color: "red", padding: 8 }}>
+          {error} <button type="button" onClick={handleSaveAndUpload}>Retry</button>
+        </div>
+      )}
       {state.shapes.some((s) => s.type === "crop") && (
         <button type="button" onClick={handleApplyCrop}>Apply Crop</button>
       )}
