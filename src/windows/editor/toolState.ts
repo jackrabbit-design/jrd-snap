@@ -78,3 +78,19 @@ export function removeShape(state: EditorState, id: string): EditorState {
 export function selectShape(state: EditorState, id: string | null): EditorState {
   return { ...state, selectedId: id };
 }
+
+export function applyCrop(
+  state: EditorState,
+  crop: { x: number; y: number; width: number; height: number },
+): EditorState {
+  const shapes = state.shapes
+    .filter((s) => s.type !== "crop")
+    .map((s): Shape => {
+      if ("points" in s) {
+        const points = s.points.map((p, i) => (i % 2 === 0 ? p - crop.x : p - crop.y));
+        return { ...s, points };
+      }
+      return { ...s, x: s.x - crop.x, y: s.y - crop.y };
+    });
+  return { ...state, shapes, selectedId: null };
+}

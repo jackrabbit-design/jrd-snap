@@ -6,6 +6,7 @@ import {
   updateShape,
   removeShape,
   selectShape,
+  applyCrop,
   type BoxShape,
   type Shape,
   type TextShape,
@@ -82,5 +83,18 @@ describe("toolState", () => {
     } else {
       throw new Error("expected shape to narrow to TextShape");
     }
+  });
+});
+
+describe("applyCrop", () => {
+  it("removes crop-type shapes and shifts remaining shapes by the crop origin", () => {
+    const cropShape: BoxShape = { id: "c", type: "crop", color: "#000", strokeWidth: 1, x: 10, y: 10, width: 50, height: 50 };
+    const rect: BoxShape = { id: "r", type: "rect", color: "#f00", strokeWidth: 2, x: 20, y: 20, width: 5, height: 5 };
+    const state = addShape(addShape(initialState, cropShape), rect);
+    const next = applyCrop(state, { x: 10, y: 10, width: 50, height: 50 });
+    expect(next.shapes).toHaveLength(1);
+    const shifted = next.shapes[0] as BoxShape;
+    expect(shifted.x).toBe(10);
+    expect(shifted.y).toBe(10);
   });
 });

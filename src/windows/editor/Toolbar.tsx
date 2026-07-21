@@ -9,6 +9,7 @@ const TOOLS: { type: ToolType; label: string }[] = [
   { type: "highlighter", label: "Highlighter" },
   { type: "text", label: "Text" },
   { type: "blur", label: "Blur" },
+  { type: "crop", label: "Crop" },
 ];
 
 interface Props {

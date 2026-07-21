@@ -71,7 +71,7 @@ export default function AnnotationCanvas({ imageSrc, state, color, strokeWidth, 
         strokeWidth: state.tool === "highlighter" ? strokeWidth * 4 : strokeWidth,
         points: [pos.x, pos.y],
       };
-    } else if (state.tool === "rect" || state.tool === "ellipse" || state.tool === "blur") {
+    } else if (state.tool === "rect" || state.tool === "ellipse" || state.tool === "blur" || state.tool === "crop") {
       shape = {
         id,
         type: state.tool,
@@ -101,7 +101,7 @@ export default function AnnotationCanvas({ imageSrc, state, color, strokeWidth, 
       updated = { ...current, points: [current.points[0], current.points[1], pos.x, pos.y] };
     } else if (current.type === "pen" || current.type === "highlighter") {
       updated = { ...current, points: [...current.points, pos.x, pos.y] };
-    } else if (current.type === "rect" || current.type === "ellipse" || current.type === "blur") {
+    } else if (current.type === "rect" || current.type === "ellipse" || current.type === "blur" || current.type === "crop") {
       updated = { ...current, width: pos.x - current.x, height: pos.y - current.y };
     } else {
       return;
@@ -148,6 +148,20 @@ export default function AnnotationCanvas({ imageSrc, state, color, strokeWidth, 
                 lineCap="round"
                 lineJoin="round"
                 tension={0}
+              />
+            );
+          }
+          if (shape.type === "crop") {
+            return (
+              <Rect
+                key={shape.id}
+                x={shape.x}
+                y={shape.y}
+                width={shape.width}
+                height={shape.height}
+                stroke="#fff"
+                dash={[6, 4]}
+                strokeWidth={1}
               />
             );
           }
