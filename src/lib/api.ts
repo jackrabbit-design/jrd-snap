@@ -33,3 +33,16 @@ export function saveCredentials(
 export function hasCredentials(): Promise<boolean> {
   return invoke("has_credentials");
 }
+
+export interface HotkeySettings {
+  captureArea: string;
+  captureFull: string;
+}
+
+export function getHotkeySettings(): Promise<HotkeySettings> {
+  return invoke<HotkeySettings>("get_hotkey_settings");
+}
+
+export function saveHotkeySettings(hotkeys: HotkeySettings): Promise<void> {
+  return invoke("save_hotkey_settings", { hotkeys });
+}

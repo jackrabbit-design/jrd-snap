@@ -99,6 +99,39 @@ pub fn save_settings(config_dir: &Path, settings: &UploadSettings) -> Result<(),
     std::fs::write(&path, raw).map_err(|e| e.to_string())
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct HotkeySettings {
+    pub capture_area: String,
+    pub capture_full: String,
+}
+
+impl Default for HotkeySettings {
+    fn default() -> Self {
+        HotkeySettings {
+            capture_area: "CommandOrControl+Shift+2".into(),
+            capture_full: "CommandOrControl+Shift+3".into(),
+        }
+    }
+}
+
+const HOTKEYS_FILE: &str = "hotkey_settings.json";
+
+pub fn load_hotkeys(config_dir: &Path) -> HotkeySettings {
+    let path = config_dir.join(HOTKEYS_FILE);
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default()
+}
+
+pub fn save_hotkeys(config_dir: &Path, hotkeys: &HotkeySettings) -> Result<(), String> {
+    std::fs::create_dir_all(config_dir).map_err(|e| e.to_string())?;
+    let path = config_dir.join(HOTKEYS_FILE);
+    let raw = serde_json::to_string_pretty(hotkeys).map_err(|e| e.to_string())?;
+    std::fs::write(&path, raw).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -165,5 +198,22 @@ mod tests {
 
     fn tempdir() -> tempfile::TempDir {
         tempfile::tempdir().unwrap()
+    }
+
+    #[test]
+    fn missing_hotkeys_file_returns_defaults() {
+        let dir = tempdir();
+        assert_eq!(load_hotkeys(dir.path()), HotkeySettings::default());
+    }
+
+    #[test]
+    fn save_then_load_hotkeys_round_trips() {
+        let dir = tempdir();
+        let hotkeys = HotkeySettings {
+            capture_area: "CommandOrControl+Shift+9".into(),
+            capture_full: "CommandOrControl+Shift+8".into(),
+        };
+        save_hotkeys(dir.path(), &hotkeys).unwrap();
+        assert_eq!(load_hotkeys(dir.path()), hotkeys);
     }
 }

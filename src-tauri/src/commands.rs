@@ -1,4 +1,6 @@
-use crate::settings::{self, CredentialStore, Credentials, KeyringCredentialStore, UploadSettings};
+use crate::settings::{
+    self, CredentialStore, Credentials, HotkeySettings, KeyringCredentialStore, UploadSettings,
+};
 use tauri::{AppHandle, Manager};
 
 #[tauri::command]
@@ -21,4 +23,18 @@ pub fn save_credentials(access_key_id: String, secret_access_key: String) -> Res
 #[tauri::command]
 pub fn has_credentials() -> bool {
     KeyringCredentialStore.get().is_some()
+}
+
+#[tauri::command]
+pub fn get_hotkey_settings(app: AppHandle) -> Result<HotkeySettings, String> {
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    Ok(settings::load_hotkeys(&dir))
+}
+
+#[tauri::command]
+pub fn save_hotkey_settings(app: AppHandle, hotkeys: HotkeySettings) -> Result<(), String> {
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    settings::save_hotkeys(&dir, &hotkeys)?;
+    crate::register_shortcuts(&app);
+    Ok(())
 }

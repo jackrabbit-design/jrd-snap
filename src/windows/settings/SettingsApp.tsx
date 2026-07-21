@@ -1,3 +1,4 @@
+import HotkeyConfigForm from "./HotkeyConfigForm";
 import UploadConfigForm from "./UploadConfigForm";
 
 export default function SettingsApp() {
@@ -5,6 +6,7 @@ export default function SettingsApp() {
     <div>
       <h2 style={{ paddingLeft: 16 }}>pxl Settings</h2>
       <UploadConfigForm />
+      <HotkeyConfigForm />
     </div>
   );
 }
