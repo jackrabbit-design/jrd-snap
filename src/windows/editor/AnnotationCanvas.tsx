@@ -1,8 +1,37 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Stage, Layer, Image as KonvaImage, Arrow, Rect, Ellipse, Line, Text } from "react-konva";
 import useImage from "use-image";
-import type { EditorState, Shape, TextShape } from "./toolState";
+import Konva from "konva";
+import type { BoxShape, EditorState, Shape, TextShape } from "./toolState";
 import { addShape, updateShape } from "./toolState";
+
+function BlurRegion({ image, shape }: { image: HTMLImageElement; shape: BoxShape }) {
+  const ref = useRef<Konva.Image>(null);
+
+  useEffect(() => {
+    ref.current?.cache();
+    ref.current?.getLayer()?.batchDraw();
+  }, [shape.x, shape.y, shape.width, shape.height]);
+
+  return (
+    <KonvaImage
+      ref={ref}
+      image={image}
+      x={Math.min(shape.x, shape.x + shape.width)}
+      y={Math.min(shape.y, shape.y + shape.height)}
+      width={Math.abs(shape.width)}
+      height={Math.abs(shape.height)}
+      crop={{
+        x: Math.min(shape.x, shape.x + shape.width),
+        y: Math.min(shape.y, shape.y + shape.height),
+        width: Math.abs(shape.width),
+        height: Math.abs(shape.height),
+      }}
+      filters={[Konva.Filters.Pixelate]}
+      pixelSize={12}
+    />
+  );
+}
 
 interface Props {
   imageSrc: string;
@@ -42,7 +71,7 @@ export default function AnnotationCanvas({ imageSrc, state, color, strokeWidth, 
         strokeWidth: state.tool === "highlighter" ? strokeWidth * 4 : strokeWidth,
         points: [pos.x, pos.y],
       };
-    } else if (state.tool === "rect" || state.tool === "ellipse") {
+    } else if (state.tool === "rect" || state.tool === "ellipse" || state.tool === "blur") {
       shape = {
         id,
         type: state.tool,
@@ -72,7 +101,7 @@ export default function AnnotationCanvas({ imageSrc, state, color, strokeWidth, 
       updated = { ...current, points: [current.points[0], current.points[1], pos.x, pos.y] };
     } else if (current.type === "pen" || current.type === "highlighter") {
       updated = { ...current, points: [...current.points, pos.x, pos.y] };
-    } else if (current.type === "rect" || current.type === "ellipse") {
+    } else if (current.type === "rect" || current.type === "ellipse" || current.type === "blur") {
       updated = { ...current, width: pos.x - current.x, height: pos.y - current.y };
     } else {
       return;
@@ -147,6 +176,9 @@ export default function AnnotationCanvas({ imageSrc, state, color, strokeWidth, 
                 strokeWidth={shape.strokeWidth}
               />
             );
+          }
+          if (shape.type === "blur" && image) {
+            return <BlurRegion key={shape.id} image={image} shape={shape} />;
           }
           if (shape.type === "text") {
             return (

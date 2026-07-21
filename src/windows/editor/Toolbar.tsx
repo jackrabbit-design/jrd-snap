@@ -8,6 +8,7 @@ const TOOLS: { type: ToolType; label: string }[] = [
   { type: "pen", label: "Pen" },
   { type: "highlighter", label: "Highlighter" },
   { type: "text", label: "Text" },
+  { type: "blur", label: "Blur" },
 ];
 
 interface Props {
