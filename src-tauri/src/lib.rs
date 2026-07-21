@@ -5,6 +5,7 @@ mod filename;
 mod object_key;
 mod settings;
 mod commands;
+mod upload;
 
 use tauri::{Emitter, Listener, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
