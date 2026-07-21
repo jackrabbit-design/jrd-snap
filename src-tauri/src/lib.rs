@@ -1,6 +1,7 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 mod tray;
 mod filename;
+mod object_key;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
