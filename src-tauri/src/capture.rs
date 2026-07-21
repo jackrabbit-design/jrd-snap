@@ -29,11 +29,15 @@ pub fn encode_png(img: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> Result<Vec<u8>, Strin
 }
 
 fn primary_monitor() -> Result<xcap::Monitor, String> {
-    xcap::Monitor::all()
-        .map_err(|e| e.to_string())?
+    let monitors = xcap::Monitor::all().map_err(|e| e.to_string())?;
+    let fallback_index = monitors
+        .iter()
+        .position(|m| m.is_primary().unwrap_or(false))
+        .unwrap_or(0);
+    monitors
         .into_iter()
-        .find(|m| m.is_primary().unwrap_or(false))
-        .ok_or_else(|| "no primary monitor found".to_string())
+        .nth(fallback_index)
+        .ok_or_else(|| "no monitor found".to_string())
 }
 
 pub fn capture_full_screen_png() -> Result<Vec<u8>, String> {
