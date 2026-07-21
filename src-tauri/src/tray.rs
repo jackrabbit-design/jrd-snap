@@ -23,7 +23,7 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             }
             "capture_full" => match crate::capture::capture_full_screen_png() {
                 Ok(bytes) => crate::open_editor_with_png(app, bytes),
-                Err(e) => eprintln!("capture_full_screen_png failed: {e}"),
+                Err(e) => crate::notify_capture_failed(app, &e),
             },
             "open_settings" => {
                 if let Some(win) = app.get_webview_window("settings") {

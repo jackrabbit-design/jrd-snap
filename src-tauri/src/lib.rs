@@ -9,6 +9,7 @@ mod upload;
 
 use tauri::{Emitter, Listener, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+use tauri_plugin_notification::NotificationExt;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -33,6 +34,19 @@ pub(crate) fn register_shortcuts(app: &tauri::AppHandle) -> Result<(), String> {
     })
     .map_err(|e| format!("capture_full shortcut \"{}\": {e}", hotkeys.capture_full))?;
     Ok(())
+}
+
+pub(crate) fn notify_capture_failed(app: &tauri::AppHandle, e: &str) {
+    eprintln!("capture failed: {e}");
+    if let Err(e) = app
+        .notification()
+        .builder()
+        .title("pxl")
+        .body(format!("Capture failed: {e}"))
+        .show()
+    {
+        eprintln!("failed to show capture-failed notification: {e}");
+    }
 }
 
 pub(crate) fn open_editor_with_png(app: &tauri::AppHandle, png_bytes: Vec<u8>) {
@@ -84,7 +98,7 @@ pub fn run() {
             app.listen("trigger-capture-full", move |_event| {
                 match capture::capture_full_screen_png() {
                     Ok(bytes) => open_editor_with_png(&handle, bytes),
-                    Err(e) => eprintln!("capture_full_screen_png failed: {e}"),
+                    Err(e) => notify_capture_failed(&handle, &e),
                 }
             });
 
@@ -101,7 +115,7 @@ pub fn run() {
                     match serde_json::from_str::<capture::CaptureRect>(event.payload()) {
                         Ok(rect) => match capture::capture_area_png(rect) {
                             Ok(bytes) => open_editor_with_png(&handle3, bytes),
-                            Err(e) => eprintln!("capture_area_png failed: {e}"),
+                            Err(e) => notify_capture_failed(&handle3, &e),
                         },
                         Err(e) => eprintln!("failed to parse overlay-selection payload: {e}"),
                     }
