@@ -16,15 +16,17 @@ const KEY_NAME_OVERRIDES: Record<string, string> = {
   "+": "Plus",
 };
 
-// Builds a Tauri accelerator string (e.g. "CommandOrControl+Shift+2") from a
-// live keydown event, or null if only modifier keys are currently held (not
-// a complete shortcut yet). Cmd (macOS) and Ctrl are both treated as the
-// cross-platform "CommandOrControl" modifier, matching this app's defaults,
-// so a shortcut recorded on one platform means the same thing on the other.
+// Builds a Tauri accelerator string (e.g. "Control+D") from a live keydown
+// event, or null if only modifier keys are currently held (not a complete
+// shortcut yet). Cmd and Ctrl are recorded as their own distinct literal
+// modifiers ("Command" / "Control") rather than merged into the
+// cross-platform "CommandOrControl" — recording Ctrl+D must not also fire
+// on Cmd+D, and vice versa.
 function acceleratorFromEvent(e: KeyboardEvent): string | null {
   if (MODIFIER_KEYS.has(e.key)) return null;
   const parts: string[] = [];
-  if (e.metaKey || e.ctrlKey) parts.push("CommandOrControl");
+  if (e.metaKey) parts.push("Command");
+  if (e.ctrlKey) parts.push("Control");
   if (e.altKey) parts.push("Alt");
   if (e.shiftKey) parts.push("Shift");
   const keyName = KEY_NAME_OVERRIDES[e.key] ?? (e.key.length === 1 ? e.key.toUpperCase() : e.key);
