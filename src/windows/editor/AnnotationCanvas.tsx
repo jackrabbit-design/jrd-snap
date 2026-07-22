@@ -97,7 +97,25 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
   const [image] = useImage(imageSrc);
   const drawing = useRef<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [editingText, setEditingText] = useState<{ id: string; x: number; y: number; value: string } | null>(null);
+
+  // Focusing the textarea synchronously (e.g. via the `autoFocus` attribute)
+  // races with the native mousedown/mouseup/click sequence that placed the
+  // text shape in the first place — the browser can steal focus back to the
+  // canvas right after, firing onBlur (which commits/closes the editor)
+  // before the user gets a chance to type anything. Deferring focus to the
+  // next animation frame lets that click finish first.
+  useEffect(() => {
+    if (!editingText) return;
+    const raf = requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.select();
+    });
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run
+    // when a new editing session starts (by id), not on every keystroke.
+  }, [editingText?.id]);
 
   // Delete/Backspace removes the selected shape in Select mode; bare letter
   // keys switch tools. Both are disabled while editing text or while any
@@ -153,6 +171,9 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
     const pos = e.target.getStage().getPointerPosition();
     const id = newId();
     if (state.tool === "text") {
+      // Prevent the native mousedown from shifting focus to the canvas —
+      // that fight is what was stealing focus back from the textarea below.
+      e.evt?.preventDefault?.();
       const shape: TextShape = { id, type: "text", color, strokeWidth, x: pos.x, y: pos.y, text: "", fontSize: 20 };
       onStateChange(selectShape(setTool(addShape(state, shape), "select"), shape.id));
       startEditingText(shape);
@@ -360,11 +381,10 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
       </Stage>
       {editingText && (
         <textarea
-          autoFocus
+          ref={textareaRef}
           rows={1}
           value={editingText.value}
           onChange={(e) => setEditingText({ ...editingText, value: e.target.value })}
-          onFocus={(e) => e.target.select()}
           onBlur={commitEditingText}
           onKeyDown={(e) => {
             // Plain Enter inserts a newline (default behavior); commit
