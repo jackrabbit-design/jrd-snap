@@ -35,27 +35,34 @@ function acceleratorFromEvent(e: KeyboardEvent): string | null {
 function HotkeyRecorderField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   const [recording, setRecording] = useState(false);
 
-  function handleKeyDown(e: React.KeyboardEvent) {
-    e.preventDefault();
-    if (e.key === "Escape") {
-      setRecording(false);
-      return;
+  // WebKit on macOS doesn't focus a <button> on mouse click (only on Tab
+  // navigation), unlike Chrome/Firefox — so a keydown handler attached to
+  // the button itself never fires after clicking it in Tauri's webview.
+  // Listen at the document level instead, gated on `recording`.
+  useEffect(() => {
+    if (!recording) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      e.preventDefault();
+      if (e.key === "Escape") {
+        setRecording(false);
+        return;
+      }
+      const accelerator = acceleratorFromEvent(e);
+      if (accelerator) {
+        onChange(accelerator);
+        setRecording(false);
+      }
     }
-    const accelerator = acceleratorFromEvent(e.nativeEvent);
-    if (accelerator) {
-      onChange(accelerator);
-      setRecording(false);
-    }
-  }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [recording, onChange]);
 
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       {label}
       <button
         type="button"
-        onClick={() => setRecording(true)}
-        onKeyDown={recording ? handleKeyDown : undefined}
-        onBlur={() => setRecording(false)}
+        onClick={() => setRecording((r) => !r)}
         style={{
           textAlign: "left",
           padding: "6px 10px",
