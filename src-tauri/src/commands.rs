@@ -5,7 +5,7 @@ use crate::settings::{
     self, CredentialStore, Credentials, HotkeySettings, KeyringCredentialStore, UploadSettings,
 };
 use crate::upload::{build_public_url, upload_object};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, Position, Size};
 
 #[tauri::command]
 pub fn get_upload_settings(app: AppHandle) -> Result<UploadSettings, String> {
@@ -45,6 +45,19 @@ pub fn save_hotkey_settings(app: AppHandle, hotkeys: HotkeySettings) -> Result<(
 #[tauri::command]
 pub fn show_overlay(app: AppHandle) -> Result<(), String> {
     let win = app.get_webview_window("overlay").ok_or("overlay window missing")?;
+
+    // Size/position the overlay to cover the primary monitor explicitly rather
+    // than using native `fullscreen`, which triggers a macOS Space transition
+    // and can force the window visible even when created with `visible: false`.
+    if let Some(monitor) = win.primary_monitor().map_err(|e| e.to_string())? {
+        let position = monitor.position();
+        let size = monitor.size();
+        win.set_position(Position::Physical(PhysicalPosition::new(position.x, position.y)))
+            .map_err(|e| e.to_string())?;
+        win.set_size(Size::Physical(PhysicalSize::new(size.width, size.height)))
+            .map_err(|e| e.to_string())?;
+    }
+
     win.show().map_err(|e| e.to_string())?;
     win.set_focus().map_err(|e| e.to_string())
 }
