@@ -48,7 +48,12 @@ body {
   font-family: var(--font);
   font-size: 13px;
   color: var(--fg);
-  background: var(--bg);
+  /* No opaque background here on purpose: the overlay window relies on
+     Tauri's window-level `transparent: true` to show the real desktop
+     through it, and an opaque body background here would paint over
+     that regardless of what the window config says. Each real content
+     window (.settings-page, .editor-page) sets its own background. */
+  background: transparent;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -67,6 +72,12 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+}
+
+.label-flex {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .field-hint {
@@ -164,6 +175,7 @@ textarea {
   flex-direction: column;
   height: 100%;
   overflow-y: auto;
+  background: var(--bg);
 }
 
 .settings-header {
@@ -212,8 +224,10 @@ textarea {
 }
 
 .editor-waiting {
+  height: 100%;
   padding: var(--space-4);
   color: var(--fg-muted);
+  background: var(--bg);
 }
 
 .toolbar {

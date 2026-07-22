@@ -83,11 +83,17 @@ export default function UploadConfigForm() {
         />
       </label>
       <label className="field">
-        Endpoint <span className="field-hint">(Spaces only, e.g. nyc3.digitaloceanspaces.com)</span>
+        <div className="label-flex">
+          <span>Endpoint</span>
+          <span className="field-hint">(Spaces only, e.g. nyc3.digitaloceanspaces.com)</span>
+        </div>
         <input className="input" value={settings.endpoint ?? ""} onChange={(e) => field("endpoint", e.target.value)} />
       </label>
       <label className="field">
-        Custom domain / CDN <span className="field-hint">(optional)</span>
+        <div className="label-flex">
+          <span>Custom domain / CDN</span>
+          <span className="field-hint">(optional)</span>
+        </div>
         <input
           className="input"
           value={settings.customDomain ?? ""}
@@ -95,11 +101,17 @@ export default function UploadConfigForm() {
         />
       </label>
       <label className="field">
-        Key prefix / folder <span className="field-hint">(optional)</span>
+        <div className="label-flex">
+          <span>Key prefix / folder</span>
+          <span className="field-hint">(optional)</span>
+        </div>
         <input className="input" value={settings.keyPrefix ?? ""} onChange={(e) => field("keyPrefix", e.target.value)} />
       </label>
       <label className="field">
-        Filename prefix <span className="field-hint">(optional)</span>
+        <div className="label-flex">
+          <span>Filename prefix</span>
+          <span className="field-hint">(optional)</span>
+        </div>
         <input
           className="input"
           value={settings.filenamePrefix ?? ""}
@@ -107,16 +119,21 @@ export default function UploadConfigForm() {
         />
       </label>
       <label className="field">
-        Access Key ID <span className="field-hint">{credsSaved && !accessKeyId ? "(saved — leave blank to keep)" : ""}</span>
-        <input className="input" value={accessKeyId} onChange={(e) => setAccessKeyId(e.target.value)} />
+        <div className="label-flex">
+          <span>Access Key ID</span>
+          <span className="field-hint">{credsSaved && !accessKeyId ? "(saved)" : ""}</span>
+        </div>
+        <input className="input" value={credsSaved && !accessKeyId ? "********" : ""} onChange={(e) => setAccessKeyId(e.target.value)} />
       </label>
       <label className="field">
-        Secret Access Key{" "}
-        <span className="field-hint">{credsSaved && !secretAccessKey ? "(saved — leave blank to keep)" : ""}</span>
+        <div className="label-flex">
+          <span>Secret Access Key{" "}</span>
+          <span className="field-hint">{credsSaved && !secretAccessKey ? "(saved)" : ""}</span>
+        </div>
         <input
           className="input"
-          type="password"
-          value={secretAccessKey}
+          type="text"
+          value={credsSaved && !secretAccessKey ? "********" : ""}
           onChange={(e) => setSecretAccessKey(e.target.value)}
         />
       </label>
