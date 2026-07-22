@@ -1,5 +1,6 @@
 use crate::settings::{Credentials, Provider, UploadSettings};
 use aws_sdk_s3::config::{Credentials as AwsCredentials, Region};
+use aws_sdk_s3::error::DisplayErrorContext;
 use aws_sdk_s3::Client;
 
 pub fn build_public_url(settings: &UploadSettings, key: &str) -> String {
@@ -50,7 +51,12 @@ pub async fn upload_object(
         .acl(aws_sdk_s3::types::ObjectCannedAcl::PublicRead)
         .send()
         .await
-        .map_err(|e| e.to_string())?;
+        // SdkError's own Display impl collapses to a generic classification
+        // like "service error" — DisplayErrorContext walks the full source
+        // chain (HTTP status, AWS error code, message) so failures are
+        // actually diagnosable (bad credentials, wrong region, bucket ACL
+        // policy, etc.) instead of a dead end.
+        .map_err(|e| format!("{}", DisplayErrorContext(e)))?;
 
     Ok(())
 }
