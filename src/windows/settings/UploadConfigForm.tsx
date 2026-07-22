@@ -53,10 +53,12 @@ export default function UploadConfigForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 8, padding: 16 }}>
-      <label>
+    <form onSubmit={handleSubmit} className="settings-section">
+      <h3>Upload Destination</h3>
+      <label className="field">
         Provider
         <select
+          className="select"
           value={settings.provider}
           onChange={(e) => setSettings((s) => ({ ...s, provider: e.target.value as "S3" | "Spaces" }))}
         >
@@ -64,40 +66,66 @@ export default function UploadConfigForm() {
           <option value="Spaces">DigitalOcean Spaces</option>
         </select>
       </label>
-      <label>
+      <label className="field">
         Bucket
-        <input value={settings.bucket} onChange={(e) => setSettings((s) => ({ ...s, bucket: e.target.value }))} />
+        <input
+          className="input"
+          value={settings.bucket}
+          onChange={(e) => setSettings((s) => ({ ...s, bucket: e.target.value }))}
+        />
       </label>
-      <label>
+      <label className="field">
         Region
-        <input value={settings.region} onChange={(e) => setSettings((s) => ({ ...s, region: e.target.value }))} />
+        <input
+          className="input"
+          value={settings.region}
+          onChange={(e) => setSettings((s) => ({ ...s, region: e.target.value }))}
+        />
       </label>
-      <label>
-        Endpoint (Spaces only, e.g. nyc3.digitaloceanspaces.com)
-        <input value={settings.endpoint ?? ""} onChange={(e) => field("endpoint", e.target.value)} />
+      <label className="field">
+        Endpoint <span className="field-hint">(Spaces only, e.g. nyc3.digitaloceanspaces.com)</span>
+        <input className="input" value={settings.endpoint ?? ""} onChange={(e) => field("endpoint", e.target.value)} />
       </label>
-      <label>
-        Custom domain / CDN (optional)
-        <input value={settings.customDomain ?? ""} onChange={(e) => field("customDomain", e.target.value)} />
+      <label className="field">
+        Custom domain / CDN <span className="field-hint">(optional)</span>
+        <input
+          className="input"
+          value={settings.customDomain ?? ""}
+          onChange={(e) => field("customDomain", e.target.value)}
+        />
       </label>
-      <label>
-        Key prefix / folder (optional)
-        <input value={settings.keyPrefix ?? ""} onChange={(e) => field("keyPrefix", e.target.value)} />
+      <label className="field">
+        Key prefix / folder <span className="field-hint">(optional)</span>
+        <input className="input" value={settings.keyPrefix ?? ""} onChange={(e) => field("keyPrefix", e.target.value)} />
       </label>
-      <label>
-        Filename prefix (optional)
-        <input value={settings.filenamePrefix ?? ""} onChange={(e) => field("filenamePrefix", e.target.value)} />
+      <label className="field">
+        Filename prefix <span className="field-hint">(optional)</span>
+        <input
+          className="input"
+          value={settings.filenamePrefix ?? ""}
+          onChange={(e) => field("filenamePrefix", e.target.value)}
+        />
       </label>
-      <label>
-        Access Key ID {credsSaved && !accessKeyId ? "(saved — leave blank to keep)" : ""}
-        <input value={accessKeyId} onChange={(e) => setAccessKeyId(e.target.value)} />
+      <label className="field">
+        Access Key ID <span className="field-hint">{credsSaved && !accessKeyId ? "(saved — leave blank to keep)" : ""}</span>
+        <input className="input" value={accessKeyId} onChange={(e) => setAccessKeyId(e.target.value)} />
       </label>
-      <label>
-        Secret Access Key {credsSaved && !secretAccessKey ? "(saved — leave blank to keep)" : ""}
-        <input type="password" value={secretAccessKey} onChange={(e) => setSecretAccessKey(e.target.value)} />
+      <label className="field">
+        Secret Access Key{" "}
+        <span className="field-hint">{credsSaved && !secretAccessKey ? "(saved — leave blank to keep)" : ""}</span>
+        <input
+          className="input"
+          type="password"
+          value={secretAccessKey}
+          onChange={(e) => setSecretAccessKey(e.target.value)}
+        />
       </label>
-      <button type="submit">Save</button>
-      {status && <span>{status}</span>}
+      <div className="settings-form-footer">
+        <button type="submit" className="button button-primary">
+          Save
+        </button>
+        {status && <span className="status-text">{status}</span>}
+      </div>
     </form>
   );
 }

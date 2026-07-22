@@ -83,11 +83,11 @@ export default function EditorApp() {
   }
 
   if (!imageSrc) {
-    return <div style={{ padding: 16 }}>Waiting for capture…</div>;
+    return <div className="editor-waiting">Waiting for capture…</div>;
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <div className="editor-page">
       <Toolbar
         tool={state.tool}
         color={color}
@@ -96,18 +96,25 @@ export default function EditorApp() {
         onColorChange={setColor}
         onStrokeWidthChange={setStrokeWidth}
       />
-      <button type="button" onClick={handleSaveAndUpload} disabled={uploading}>
-        {uploading ? "Uploading…" : "Save & Upload"}
-      </button>
+      <div className="editor-actions">
+        <button type="button" className="button button-primary" onClick={handleSaveAndUpload} disabled={uploading}>
+          {uploading ? "Uploading…" : "Save & Upload"}
+        </button>
+        {state.shapes.some((s) => s.type === "crop") && (
+          <button type="button" className="button" onClick={handleApplyCrop}>
+            Apply Crop
+          </button>
+        )}
+      </div>
       {error && (
-        <div style={{ color: "red", padding: 8 }}>
-          {error} <button type="button" onClick={handleSaveAndUpload}>Retry</button>
+        <div className="error-banner">
+          <span>{error}</span>
+          <button type="button" className="button" onClick={handleSaveAndUpload}>
+            Retry
+          </button>
         </div>
       )}
-      {state.shapes.some((s) => s.type === "crop") && (
-        <button type="button" onClick={handleApplyCrop}>Apply Crop</button>
-      )}
-      <div id="editor-canvas-container" style={{ flex: 1, overflow: "auto" }}>
+      <div id="editor-canvas-container" className="editor-canvas-container">
         <AnnotationCanvas
           ref={stageRef}
           imageSrc={imageSrc}

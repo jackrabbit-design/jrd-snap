@@ -60,16 +60,13 @@ function HotkeyRecorderField({ label, value, onChange }: { label: string; value:
   }, [recording, onChange]);
 
   return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+    <label className="field">
       {label}
       <button
         type="button"
+        className="input"
         onClick={() => setRecording((r) => !r)}
-        style={{
-          textAlign: "left",
-          padding: "6px 10px",
-          border: recording ? "2px solid #3b82f6" : "1px solid #ccc",
-        }}
+        style={{ textAlign: "left", cursor: "pointer", borderColor: recording ? "var(--accent)" : undefined }}
       >
         {recording ? "Press a key combination… (Escape to cancel)" : value}
       </button>
@@ -99,7 +96,8 @@ export default function HotkeyConfigForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 8, padding: 16 }}>
+    <form onSubmit={handleSubmit} className="settings-section">
+      <h3>Hotkeys</h3>
       <HotkeyRecorderField
         label="Capture Area"
         value={hotkeys.captureArea}
@@ -110,8 +108,12 @@ export default function HotkeyConfigForm() {
         value={hotkeys.captureFull}
         onChange={(v) => setHotkeys((h) => ({ ...h, captureFull: v }))}
       />
-      <button type="submit">Save Hotkeys</button>
-      {status && <span>{status}</span>}
+      <div className="settings-form-footer">
+        <button type="submit" className="button button-primary">
+          Save Hotkeys
+        </button>
+        {status && <span className="status-text">{status}</span>}
+      </div>
     </form>
   );
 }

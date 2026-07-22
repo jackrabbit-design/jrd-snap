@@ -23,26 +23,34 @@ interface Props {
 
 export default function Toolbar({ tool, color, strokeWidth, onToolChange, onColorChange, onStrokeWidthChange }: Props) {
   return (
-    <div style={{ display: "flex", gap: 8, padding: 8, borderBottom: "1px solid #ccc" }}>
+    <div className="toolbar">
       {TOOLS.map((t) => (
         <button
           key={t.type}
           type="button"
           title={t.title}
           onClick={() => onToolChange(t.type)}
-          style={{ fontWeight: tool === t.type ? "bold" : "normal" }}
+          className={`tool-button${tool === t.type ? " active" : ""}`}
         >
           {t.label}
         </button>
       ))}
-      <input type="color" value={color} onChange={(e) => onColorChange(e.target.value)} />
+      <div className="toolbar-divider" />
+      <input
+        type="color"
+        className="color-swatch"
+        title="Color"
+        value={color}
+        onChange={(e) => onColorChange(e.target.value)}
+      />
       <input
         type="number"
+        className="input stroke-width-input"
+        title="Stroke width"
         min={1}
         max={20}
         value={strokeWidth}
         onChange={(e) => onStrokeWidthChange(Number(e.target.value))}
-        style={{ width: 48 }}
       />
     </div>
   );

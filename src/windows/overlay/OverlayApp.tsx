@@ -94,25 +94,17 @@ export default function OverlayApp() {
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onKeyDown={handleKeyDown}
-      style={{
-        position: "fixed",
-        inset: 0,
-        cursor: "crosshair",
-        background: "rgba(0,0,0,0.2)",
-      }}
+      className="overlay-root"
     >
       {rect && (
         <div
-          style={{
-            position: "absolute",
-            left: rect.left,
-            top: rect.top,
-            width: rect.width,
-            height: rect.height,
-            background: "rgba(255,255,255,0.15)",
-            border: "1px solid #fff",
-          }}
-        />
+          className="overlay-selection"
+          style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
+        >
+          <span className="overlay-dimensions">
+            {Math.round(rect.width)} × {Math.round(rect.height)}
+          </span>
+        </div>
       )}
     </div>
   );
