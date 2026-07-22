@@ -82,6 +82,9 @@ interface Props {
   color: string;
   strokeWidth: number;
   onStateChange: (next: EditorState) => void;
+  // Reports the current fit-to-panel scale (<=1) so the parent can export at
+  // full native resolution regardless of how small the on-screen display is.
+  onScaleChange?: (scale: number) => void;
 }
 
 let nextId = 0;
@@ -91,7 +94,7 @@ function newId(): string {
 }
 
 const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanvas(
-  { imageSrc, state, color, strokeWidth, onStateChange },
+  { imageSrc, state, color, strokeWidth, onStateChange, onScaleChange },
   ref,
 ) {
   const [image] = useImage(imageSrc);
@@ -100,22 +103,35 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [editingText, setEditingText] = useState<{ id: string; x: number; y: number; value: string } | null>(null);
 
-  // Focusing the textarea synchronously (e.g. via the `autoFocus` attribute)
-  // races with the native mousedown/mouseup/click sequence that placed the
-  // text shape in the first place — the browser can steal focus back to the
-  // canvas right after, firing onBlur (which commits/closes the editor)
-  // before the user gets a chance to type anything. Deferring focus to the
-  // next animation frame lets that click finish first.
+  // Fit the (often much larger than the window) captured image down to the
+  // available panel space, like `object-fit: contain` — but Konva renders to
+  // a real <canvas>, so this has to be done by scaling the Stage itself, not
+  // just CSS. Shapes stay stored in the image's native pixel coordinates
+  // throughout (via getRelativePointerPosition below); only the display and
+  // export need to know about this scale.
+  const [fit, setFit] = useState({ scale: 1, width: 800, height: 600 });
+
   useEffect(() => {
-    if (!editingText) return;
-    const raf = requestAnimationFrame(() => {
-      textareaRef.current?.focus();
-      textareaRef.current?.select();
-    });
-    return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run
-    // when a new editing session starts (by id), not on every keystroke.
-  }, [editingText?.id]);
+    if (!image) return;
+    const loadedImage = image;
+    const parent = containerRef.current?.parentElement;
+    if (!parent) return;
+    const panel = parent;
+
+    function computeFit() {
+      const scale = Math.min(1, panel.clientWidth / loadedImage.width, panel.clientHeight / loadedImage.height);
+      setFit({ scale, width: loadedImage.width * scale, height: loadedImage.height * scale });
+      onScaleChange?.(scale);
+    }
+
+    computeFit();
+    const observer = new ResizeObserver(computeFit);
+    observer.observe(panel);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onScaleChange
+    // is a setState setter from the parent; including it would cause this
+    // effect to fire on every scale update it triggers.
+  }, [image]);
 
   // Delete/Backspace removes the selected shape in Select mode; bare letter
   // keys switch tools. Both are disabled while editing text or while any
@@ -140,6 +156,23 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [state, onStateChange, editingText]);
 
+  // Focusing the textarea synchronously (e.g. via the `autoFocus` attribute)
+  // races with the native mousedown/mouseup/click sequence that placed the
+  // text shape in the first place — the browser can steal focus back to the
+  // canvas right after, firing onBlur (which commits/closes the editor)
+  // before the user gets a chance to type anything. Deferring focus to the
+  // next animation frame lets that click finish first.
+  useEffect(() => {
+    if (!editingText) return;
+    const raf = requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.select();
+    });
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run
+    // when a new editing session starts (by id), not on every keystroke.
+  }, [editingText?.id]);
+
   function select(id: string) {
     if (state.tool === "select") onStateChange(selectShape(state, id));
   }
@@ -148,8 +181,8 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
     const containerRect = containerRef.current?.getBoundingClientRect();
     setEditingText({
       id: shape.id,
-      x: (containerRect?.left ?? 0) + shape.x,
-      y: (containerRect?.top ?? 0) + shape.y,
+      x: (containerRect?.left ?? 0) + shape.x * fit.scale,
+      y: (containerRect?.top ?? 0) + shape.y * fit.scale,
       value: shape.text,
     });
   }
@@ -168,7 +201,10 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
       }
       return;
     }
-    const pos = e.target.getStage().getPointerPosition();
+    // getRelativePointerPosition (not getPointerPosition) accounts for the
+    // Stage's fit-to-panel scale, so shapes are always created/tracked in
+    // the image's native pixel coordinates regardless of display size.
+    const pos = e.target.getStage().getRelativePointerPosition();
     const id = newId();
     if (state.tool === "text") {
       // Prevent the native mousedown from shifting focus to the canvas —
@@ -210,7 +246,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
 
   function handleMouseMove(e: any) {
     if (!drawing.current) return;
-    const pos = e.target.getStage().getPointerPosition();
+    const pos = e.target.getStage().getRelativePointerPosition();
     // The shape being drawn is always the last item in the array.
     const idx = state.shapes.length - 1;
     const current = state.shapes[idx];
@@ -241,8 +277,10 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
     <div ref={containerRef} className="canvas-panel" style={{ position: "relative" }}>
       <Stage
         ref={ref}
-        width={image?.width ?? 800}
-        height={image?.height ?? 600}
+        width={image ? fit.width : 800}
+        height={image ? fit.height : 600}
+        scaleX={fit.scale}
+        scaleY={fit.scale}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -402,7 +440,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
             left: editingText.x,
             top: editingText.y,
             minWidth: 120,
-            fontSize: 20,
+            fontSize: 20 * fit.scale,
             fontFamily: "sans-serif",
             lineHeight: 1.2,
             border: "1px solid #3b82f6",

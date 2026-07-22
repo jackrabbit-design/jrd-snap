@@ -15,7 +15,13 @@ export function dataUrlToBytes(dataUrl: string): Uint8Array {
   return bytes;
 }
 
-export function exportStageToBytes(stage: Konva.Stage): Uint8Array {
-  const dataUrl = stage.toDataURL({ mimeType: "image/png" });
+// pixelRatio compensates for the Stage possibly being displayed smaller than
+// the source image (fit-to-panel scaling, like `object-fit: contain`) —
+// Konva's toDataURL exports at the Stage's current on-screen size by
+// default, so without this the uploaded PNG would be a downscaled copy of
+// what's actually on screen. Pass 1 / displayScale to get back full
+// native resolution regardless of how small the panel is showing it.
+export function exportStageToBytes(stage: Konva.Stage, pixelRatio = 1): Uint8Array {
+  const dataUrl = stage.toDataURL({ mimeType: "image/png", pixelRatio });
   return dataUrlToBytes(dataUrl);
 }

@@ -17,6 +17,7 @@ export default function EditorApp() {
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [displayScale, setDisplayScale] = useState(1);
   const stageRef = useRef<Konva.Stage>(null);
 
   useEffect(() => {
@@ -66,7 +67,7 @@ export default function EditorApp() {
     });
     stageRef.current.batchDraw();
     try {
-      const bytes = exportStageToBytes(stageRef.current);
+      const bytes = exportStageToBytes(stageRef.current, 1 / displayScale);
       const url = await uploadFile(bytes, "png");
       await writeText(url);
       await sendNotification({ title: "pxl", body: `Uploaded — link copied to clipboard\n${url}` });
@@ -122,6 +123,7 @@ export default function EditorApp() {
           color={color}
           strokeWidth={strokeWidth}
           onStateChange={setState}
+          onScaleChange={setDisplayScale}
         />
       </div>
     </div>
