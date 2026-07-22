@@ -1,34 +1,77 @@
-import { forwardRef, useEffect, useRef } from "react";
+import { forwardRef, useEffect, useRef, useState } from "react";
 import { Stage, Layer, Image as KonvaImage, Arrow, Rect, Ellipse, Line, Text } from "react-konva";
 import useImage from "use-image";
 import Konva from "konva";
-import type { BoxShape, EditorState, Shape, TextShape } from "./toolState";
-import { addShape, updateShape } from "./toolState";
+import type { BoxShape, EditorState, Shape, TextShape, ToolType } from "./toolState";
+import { addShape, removeShape, selectShape, setTool, updateShape } from "./toolState";
 
-function BlurRegion({ image, shape }: { image: HTMLImageElement; shape: BoxShape }) {
+const TOOL_HOTKEYS: Record<string, ToolType> = {
+  r: "rect",
+  o: "ellipse",
+  t: "text",
+  b: "blur",
+  c: "crop",
+  p: "pen",
+  a: "arrow",
+  h: "highlighter",
+};
+
+const SELECTED_SHADOW = {
+  shadowColor: "#3b82f6",
+  shadowBlur: 10,
+  shadowOpacity: 0.9,
+  shadowEnabled: true,
+};
+
+function BlurRegion({ image, shape, selected, onSelect, onDragEnd }: {
+  image: HTMLImageElement;
+  shape: BoxShape;
+  selected: boolean;
+  onSelect: () => void;
+  onDragEnd: (x: number, y: number) => void;
+}) {
   const ref = useRef<Konva.Image>(null);
+  const x = Math.min(shape.x, shape.x + shape.width);
+  const y = Math.min(shape.y, shape.y + shape.height);
+  const width = Math.abs(shape.width);
+  const height = Math.abs(shape.height);
 
   useEffect(() => {
-    ref.current?.cache();
-    ref.current?.getLayer()?.batchDraw();
-  }, [shape.x, shape.y, shape.width, shape.height]);
+    // Konva refuses to cache (and logs/throws) a zero-size node — this
+    // happens for one render right after mousedown, before the first drag
+    // move sets a real width/height. Skip caching until there's something
+    // real to pixelate, or the filter silently never applies.
+    if (width <= 0 || height <= 0) return;
+    try {
+      ref.current?.cache();
+      ref.current?.getLayer()?.batchDraw();
+    } catch (e) {
+      console.error("failed to cache blur region for pixelation", e);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- x/y aren't read
+    // in this closure, but the crop region (and thus what must be re-cached)
+    // moves with position: dragging the box to redact different content
+    // needs a fresh cache of the newly-covered pixels, not the old ones.
+  }, [x, y, width, height]);
+
+  if (width <= 0 || height <= 0) return null;
 
   return (
     <KonvaImage
       ref={ref}
       image={image}
-      x={Math.min(shape.x, shape.x + shape.width)}
-      y={Math.min(shape.y, shape.y + shape.height)}
-      width={Math.abs(shape.width)}
-      height={Math.abs(shape.height)}
-      crop={{
-        x: Math.min(shape.x, shape.x + shape.width),
-        y: Math.min(shape.y, shape.y + shape.height),
-        width: Math.abs(shape.width),
-        height: Math.abs(shape.height),
-      }}
+      x={x}
+      y={y}
+      width={width}
+      height={height}
+      crop={{ x, y, width, height }}
       filters={[Konva.Filters.Pixelate]}
       pixelSize={12}
+      draggable
+      onClick={onSelect}
+      onTap={onSelect}
+      onDragEnd={(e) => onDragEnd(e.target.x(), e.target.y())}
+      {...(selected ? SELECTED_SHADOW : {})}
     />
   );
 }
@@ -53,14 +96,66 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
 ) {
   const [image] = useImage(imageSrc);
   const drawing = useRef<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [editingText, setEditingText] = useState<{ id: string; x: number; y: number; value: string } | null>(null);
+
+  // Delete/Backspace removes the selected shape in Select mode; bare letter
+  // keys switch tools. Both are disabled while editing text or while any
+  // other input/textarea has focus, so typing a shape's name doesn't yank
+  // the active tool out from under you.
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (editingText) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if ((e.key === "Delete" || e.key === "Backspace") && state.tool === "select" && state.selectedId) {
+        onStateChange(removeShape(state, state.selectedId));
+        return;
+      }
+      const hotkeyTool = TOOL_HOTKEYS[e.key.toLowerCase()];
+      if (hotkeyTool) {
+        onStateChange(setTool(state, hotkeyTool));
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [state, onStateChange, editingText]);
+
+  function select(id: string) {
+    if (state.tool === "select") onStateChange(selectShape(state, id));
+  }
+
+  function startEditingText(shape: TextShape) {
+    const containerRect = containerRef.current?.getBoundingClientRect();
+    setEditingText({
+      id: shape.id,
+      x: (containerRect?.left ?? 0) + shape.x,
+      y: (containerRect?.top ?? 0) + shape.y,
+      value: shape.text,
+    });
+  }
+
+  function commitEditingText() {
+    if (!editingText) return;
+    onStateChange(updateShape(state, editingText.id, { text: editingText.value }));
+    setEditingText(null);
+  }
 
   function handleMouseDown(e: any) {
-    if (state.tool === "select") return;
+    if (state.tool === "select") {
+      // Clicked empty canvas: clear selection instead of leaving a stale one.
+      if (e.target === e.target.getStage()) {
+        onStateChange(selectShape(state, null));
+      }
+      return;
+    }
     const pos = e.target.getStage().getPointerPosition();
     const id = newId();
     if (state.tool === "text") {
-      const shape: TextShape = { id, type: "text", color, strokeWidth, x: pos.x, y: pos.y, text: "Text", fontSize: 20 };
-      onStateChange(addShape(state, shape));
+      const shape: TextShape = { id, type: "text", color, strokeWidth, x: pos.x, y: pos.y, text: "", fontSize: 20 };
+      onStateChange(selectShape(setTool(addShape(state, shape), "select"), shape.id));
+      startEditingText(shape);
       return;
     }
     let shape: Shape;
@@ -115,114 +210,189 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
   }
 
   function handleMouseUp() {
-    drawing.current = null;
+    if (drawing.current) {
+      drawing.current = null;
+      onStateChange(setTool(state, "select"));
+    }
   }
 
   return (
-    <Stage
-      ref={ref}
-      width={image?.width ?? 800}
-      height={image?.height ?? 600}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-    >
-      <Layer>
-        {image && <KonvaImage image={image} />}
-        {state.shapes.map((shape) => {
-          if (shape.type === "arrow") {
-            return (
-              <Arrow
-                key={shape.id}
-                points={shape.points}
-                stroke={shape.color}
-                strokeWidth={shape.strokeWidth}
-                fill={shape.color}
-              />
-            );
-          }
-          if (shape.type === "pen" || shape.type === "highlighter") {
-            return (
-              <Line
-                key={shape.id}
-                points={shape.points}
-                stroke={shape.color}
-                strokeWidth={shape.strokeWidth}
-                opacity={shape.type === "highlighter" ? 0.4 : 1}
-                lineCap="round"
-                lineJoin="round"
-                tension={0}
-              />
-            );
-          }
-          if (shape.type === "crop") {
-            return (
-              <Rect
-                key={shape.id}
-                name="crop-shape"
-                x={shape.x}
-                y={shape.y}
-                width={shape.width}
-                height={shape.height}
-                stroke="#fff"
-                dash={[6, 4]}
-                strokeWidth={1}
-              />
-            );
-          }
-          if (shape.type === "rect") {
-            return (
-              <Rect
-                key={shape.id}
-                x={shape.x}
-                y={shape.y}
-                width={shape.width}
-                height={shape.height}
-                stroke={shape.color}
-                strokeWidth={shape.strokeWidth}
-              />
-            );
-          }
-          if (shape.type === "ellipse") {
-            return (
-              <Ellipse
-                key={shape.id}
-                x={shape.x + shape.width / 2}
-                y={shape.y + shape.height / 2}
-                radiusX={Math.abs(shape.width) / 2}
-                radiusY={Math.abs(shape.height) / 2}
-                stroke={shape.color}
-                strokeWidth={shape.strokeWidth}
-              />
-            );
-          }
-          if (shape.type === "blur" && image) {
-            return <BlurRegion key={shape.id} image={image} shape={shape} />;
-          }
-          if (shape.type === "text") {
-            return (
-              <Text
-                key={shape.id}
-                x={shape.x}
-                y={shape.y}
-                text={shape.text}
-                fontSize={shape.fontSize}
-                fill={shape.color}
-                draggable
-                onDragEnd={(e) => onStateChange(updateShape(state, shape.id, { x: e.target.x(), y: e.target.y() }))}
-                onDblClick={() => {
-                  const next = window.prompt("Edit text", shape.text);
-                  if (next !== null) {
-                    onStateChange(updateShape(state, shape.id, { text: next }));
+    <div ref={containerRef} style={{ position: "relative", display: "inline-block" }}>
+      <Stage
+        ref={ref}
+        width={image?.width ?? 800}
+        height={image?.height ?? 600}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+      >
+        <Layer>
+          {image && <KonvaImage image={image} />}
+          {state.shapes.map((shape) => {
+            const selected = state.selectedId === shape.id;
+            const draggable = state.tool === "select";
+            if (shape.type === "arrow") {
+              return (
+                <Arrow
+                  key={shape.id}
+                  points={shape.points}
+                  stroke={shape.color}
+                  strokeWidth={shape.strokeWidth}
+                  fill={shape.color}
+                  hitStrokeWidth={Math.max(shape.strokeWidth, 16)}
+                  onClick={() => select(shape.id)}
+                  onTap={() => select(shape.id)}
+                  {...(selected ? SELECTED_SHADOW : {})}
+                />
+              );
+            }
+            if (shape.type === "pen" || shape.type === "highlighter") {
+              return (
+                <Line
+                  key={shape.id}
+                  points={shape.points}
+                  stroke={shape.color}
+                  strokeWidth={shape.strokeWidth}
+                  opacity={shape.type === "highlighter" ? 0.4 : 1}
+                  lineCap="round"
+                  lineJoin="round"
+                  tension={0}
+                  hitStrokeWidth={Math.max(shape.strokeWidth, 16)}
+                  onClick={() => select(shape.id)}
+                  onTap={() => select(shape.id)}
+                  {...(selected ? SELECTED_SHADOW : {})}
+                />
+              );
+            }
+            if (shape.type === "crop") {
+              return (
+                <Rect
+                  key={shape.id}
+                  name="crop-shape"
+                  x={shape.x}
+                  y={shape.y}
+                  width={shape.width}
+                  height={shape.height}
+                  stroke="#fff"
+                  dash={[6, 4]}
+                  strokeWidth={1}
+                />
+              );
+            }
+            if (shape.type === "rect") {
+              return (
+                <Rect
+                  key={shape.id}
+                  x={shape.x}
+                  y={shape.y}
+                  width={shape.width}
+                  height={shape.height}
+                  stroke={shape.color}
+                  strokeWidth={shape.strokeWidth}
+                  draggable={draggable}
+                  onClick={() => select(shape.id)}
+                  onTap={() => select(shape.id)}
+                  onDragEnd={(e) => onStateChange(updateShape(state, shape.id, { x: e.target.x(), y: e.target.y() }))}
+                  {...(selected ? SELECTED_SHADOW : {})}
+                />
+              );
+            }
+            if (shape.type === "ellipse") {
+              return (
+                <Ellipse
+                  key={shape.id}
+                  x={shape.x + shape.width / 2}
+                  y={shape.y + shape.height / 2}
+                  radiusX={Math.abs(shape.width) / 2}
+                  radiusY={Math.abs(shape.height) / 2}
+                  stroke={shape.color}
+                  strokeWidth={shape.strokeWidth}
+                  draggable={draggable}
+                  onClick={() => select(shape.id)}
+                  onTap={() => select(shape.id)}
+                  onDragEnd={(e) =>
+                    onStateChange(
+                      updateShape(state, shape.id, {
+                        x: e.target.x() - shape.width / 2,
+                        y: e.target.y() - shape.height / 2,
+                      }),
+                    )
                   }
-                }}
-              />
-            );
-          }
-          return null;
-        })}
-      </Layer>
-    </Stage>
+                  {...(selected ? SELECTED_SHADOW : {})}
+                />
+              );
+            }
+            if (shape.type === "blur" && image) {
+              return (
+                <BlurRegion
+                  key={shape.id}
+                  image={image}
+                  shape={shape}
+                  selected={selected}
+                  onSelect={() => select(shape.id)}
+                  onDragEnd={(x, y) => onStateChange(updateShape(state, shape.id, { x, y }))}
+                />
+              );
+            }
+            if (shape.type === "text") {
+              if (editingText?.id === shape.id) return null;
+              return (
+                <Text
+                  key={shape.id}
+                  x={shape.x}
+                  y={shape.y}
+                  text={shape.text}
+                  fontSize={shape.fontSize}
+                  fill={shape.color}
+                  draggable
+                  onClick={() => select(shape.id)}
+                  onTap={() => select(shape.id)}
+                  onDragEnd={(e) => onStateChange(updateShape(state, shape.id, { x: e.target.x(), y: e.target.y() }))}
+                  onDblClick={() => startEditingText(shape)}
+                  onDblTap={() => startEditingText(shape)}
+                  {...(selected ? SELECTED_SHADOW : {})}
+                />
+              );
+            }
+            return null;
+          })}
+        </Layer>
+      </Stage>
+      {editingText && (
+        <textarea
+          autoFocus
+          rows={1}
+          value={editingText.value}
+          onChange={(e) => setEditingText({ ...editingText, value: e.target.value })}
+          onFocus={(e) => e.target.select()}
+          onBlur={commitEditingText}
+          onKeyDown={(e) => {
+            // Plain Enter inserts a newline (default behavior); commit
+            // explicitly with Cmd/Ctrl+Enter, cancel with Escape.
+            if (e.key === "Escape") {
+              e.preventDefault();
+              setEditingText(null);
+            } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              commitEditingText();
+            }
+          }}
+          style={{
+            position: "fixed",
+            left: editingText.x,
+            top: editingText.y,
+            minWidth: 120,
+            fontSize: 20,
+            fontFamily: "sans-serif",
+            lineHeight: 1.2,
+            border: "1px solid #3b82f6",
+            padding: 2,
+            resize: "both",
+            zIndex: 1000,
+          }}
+        />
+      )}
+    </div>
   );
 });
 

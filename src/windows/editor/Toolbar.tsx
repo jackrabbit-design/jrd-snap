@@ -1,15 +1,15 @@
 import type { ToolType } from "./toolState";
 
-const TOOLS: { type: ToolType; label: string }[] = [
-  { type: "select", label: "Select" },
-  { type: "arrow", label: "Arrow" },
-  { type: "rect", label: "Rectangle" },
-  { type: "ellipse", label: "Ellipse" },
-  { type: "pen", label: "Pen" },
-  { type: "highlighter", label: "Highlighter" },
-  { type: "text", label: "Text" },
-  { type: "blur", label: "Blur" },
-  { type: "crop", label: "Crop" },
+const TOOLS: { type: ToolType; label: string; title: string }[] = [
+  { type: "select", label: "Select", title: "Click a shape to select it, drag to move it, Delete/Backspace to remove it" },
+  { type: "arrow", label: "Arrow (A)", title: "Arrow — hotkey A" },
+  { type: "rect", label: "Rectangle (R)", title: "Rectangle — hotkey R" },
+  { type: "ellipse", label: "Oval (O)", title: "Oval — hotkey O" },
+  { type: "pen", label: "Pen (P)", title: "Pen — hotkey P" },
+  { type: "highlighter", label: "Highlighter (H)", title: "Highlighter — hotkey H" },
+  { type: "text", label: "Text (T)", title: "Text — hotkey T. Click to place and start typing immediately, double-click existing text to edit it" },
+  { type: "blur", label: "Blur (B)", title: "Blur — hotkey B" },
+  { type: "crop", label: "Crop (C)", title: "Crop — hotkey C" },
 ];
 
 interface Props {
@@ -27,6 +27,8 @@ export default function Toolbar({ tool, color, strokeWidth, onToolChange, onColo
       {TOOLS.map((t) => (
         <button
           key={t.type}
+          type="button"
+          title={t.title}
           onClick={() => onToolChange(t.type)}
           style={{ fontWeight: tool === t.type ? "bold" : "normal" }}
         >

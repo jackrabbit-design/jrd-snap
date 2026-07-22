@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { emit } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -11,6 +11,19 @@ export default function OverlayApp() {
   const [start, setStart] = useState<Point | null>(null);
   const [current, setCurrent] = useState<Point | null>(null);
   const dragging = useRef(false);
+
+  // Some WebKit/WKWebView builds don't reliably propagate a CSS `cursor`
+  // set only on a child element over a transparent, borderless window —
+  // force it at the document root too so the crosshair actually shows.
+  useEffect(() => {
+    const previous = document.documentElement.style.cursor;
+    document.documentElement.style.cursor = "crosshair";
+    document.body.style.cursor = "crosshair";
+    return () => {
+      document.documentElement.style.cursor = previous;
+      document.body.style.cursor = "";
+    };
+  }, []);
 
   function handleMouseDown(e: React.MouseEvent) {
     dragging.current = true;

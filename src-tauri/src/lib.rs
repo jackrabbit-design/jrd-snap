@@ -94,6 +94,21 @@ pub fn run() {
                 eprintln!("failed to register global shortcuts: {e}");
             }
 
+            // Closing the settings/editor windows via the native close button
+            // would otherwise destroy them, so the next tray click/capture
+            // could never find or re-show them. Hide instead.
+            for label in ["settings", "editor"] {
+                if let Some(win) = app.get_webview_window(label) {
+                    let win_to_hide = win.clone();
+                    win.on_window_event(move |event| {
+                        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                            api.prevent_close();
+                            let _ = win_to_hide.hide();
+                        }
+                    });
+                }
+            }
+
             let handle = app.handle().clone();
             app.listen("trigger-capture-full", move |_event| {
                 match capture::capture_full_screen_png() {
