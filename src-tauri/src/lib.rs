@@ -96,6 +96,7 @@ pub fn run() {
             commands::get_hotkey_settings,
             commands::save_hotkey_settings,
             commands::show_overlay,
+            commands::show_overlay_for_recording,
             commands::hide_overlay,
             commands::capture_full_screen,
             commands::capture_area,

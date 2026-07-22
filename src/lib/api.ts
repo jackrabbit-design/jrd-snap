@@ -52,3 +52,7 @@ export function saveHotkeySettings(hotkeys: HotkeySettings): Promise<void> {
 export function uploadFile(bytes: Uint8Array, extension: string): Promise<string> {
   return invoke("upload_file", { bytes: Array.from(bytes), extension });
 }
+
+export function showOverlayForRecording(area: boolean): Promise<void> {
+  return invoke("show_overlay_for_recording", { area });
+}

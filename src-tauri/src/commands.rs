@@ -6,7 +6,7 @@ use crate::settings::{
     self, CredentialStore, Credentials, HotkeySettings, KeyringCredentialStore, UploadSettings,
 };
 use crate::upload::{build_public_url, upload_object};
-use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, Position, Size, State};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, Position, Size, State};
 
 #[tauri::command]
 pub fn get_upload_settings(app: AppHandle) -> Result<UploadSettings, String> {
@@ -43,13 +43,10 @@ pub fn save_hotkey_settings(app: AppHandle, hotkeys: HotkeySettings) -> Result<(
     crate::register_shortcuts(&app)
 }
 
-#[tauri::command]
-pub fn show_overlay(app: AppHandle) -> Result<(), String> {
-    let win = app.get_webview_window("overlay").ok_or("overlay window missing")?;
-
-    // Size/position the overlay to cover the primary monitor explicitly rather
-    // than using native `fullscreen`, which triggers a macOS Space transition
-    // and can force the window visible even when created with `visible: false`.
+// Size/position the overlay to cover the primary monitor explicitly rather
+// than using native `fullscreen`, which triggers a macOS Space transition
+// and can force the window visible even when created with `visible: false`.
+fn resize_overlay_to_monitor(win: &tauri::WebviewWindow) -> Result<(), String> {
     if let Some(monitor) = win.primary_monitor().map_err(|e| e.to_string())? {
         let position = monitor.position();
         let size = monitor.size();
@@ -58,9 +55,25 @@ pub fn show_overlay(app: AppHandle) -> Result<(), String> {
         win.set_size(Size::Physical(PhysicalSize::new(size.width, size.height)))
             .map_err(|e| e.to_string())?;
     }
+    Ok(())
+}
 
+#[tauri::command]
+pub fn show_overlay(app: AppHandle) -> Result<(), String> {
+    let win = app.get_webview_window("overlay").ok_or("overlay window missing")?;
+    resize_overlay_to_monitor(&win)?;
     win.show().map_err(|e| e.to_string())?;
     win.set_focus().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn show_overlay_for_recording(app: AppHandle, area: bool) -> Result<(), String> {
+    let win = app.get_webview_window("overlay").ok_or("overlay window missing")?;
+    resize_overlay_to_monitor(&win)?;
+    win.show().map_err(|e| e.to_string())?;
+    win.set_focus().map_err(|e| e.to_string())?;
+    app.emit_to("overlay", "overlay-mode", serde_json::json!({ "purpose": "record", "area": area }))
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

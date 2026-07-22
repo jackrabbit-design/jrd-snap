@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { emit } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 
 interface Point {
@@ -7,10 +7,25 @@ interface Point {
   y: number;
 }
 
+interface CaptureRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+type Phase = "select" | "confirm";
+type Purpose = "screenshot" | "record";
+
 export default function OverlayApp() {
   const [start, setStart] = useState<Point | null>(null);
   const [current, setCurrent] = useState<Point | null>(null);
   const dragging = useRef(false);
+
+  const [phase, setPhase] = useState<Phase>("select");
+  const [purpose, setPurpose] = useState<Purpose>("screenshot");
+  const [micEnabled, setMicEnabled] = useState(false);
+  const [recordRegion, setRecordRegion] = useState<CaptureRect | null>(null);
 
   // Some WebKit/WKWebView builds don't reliably propagate a CSS `cursor`
   // set only on a child element over a transparent, borderless window —
@@ -22,6 +37,18 @@ export default function OverlayApp() {
     return () => {
       document.documentElement.style.cursor = previous;
       document.body.style.cursor = "";
+    };
+  }, []);
+
+  useEffect(() => {
+    const unlisten = listen<{ purpose: "record"; area: boolean }>("overlay-mode", (event) => {
+      setPurpose(event.payload.purpose);
+      // Full-screen recording skips straight to the confirm panel; area
+      // recording goes through the existing drag-select first.
+      setPhase(event.payload.area ? "select" : "confirm");
+    });
+    return () => {
+      unlisten.then((f) => f());
     };
   }, []);
 
@@ -46,7 +73,7 @@ export default function OverlayApp() {
     setStart(null);
     setCurrent(null);
     if (width < 2 || height < 2) {
-      await invoke("hide_overlay");
+      if (purpose === "screenshot") await invoke("hide_overlay");
       return;
     }
     // Convert from logical/CSS pixels (browser mouse coordinates) to physical
@@ -59,6 +86,11 @@ export default function OverlayApp() {
       width: Math.round(width * dpr),
       height: Math.round(height * dpr),
     };
+    if (purpose === "record") {
+      setRecordRegion(rect);
+      setPhase("confirm");
+      return;
+    }
     // Hide the overlay (including its semi-transparent dark tint) BEFORE
     // triggering the actual screen capture, and give the window server a
     // moment to actually composite that away — otherwise the capture can
@@ -72,6 +104,8 @@ export default function OverlayApp() {
     if (e.key === "Escape") {
       setStart(null);
       setCurrent(null);
+      setPhase("select");
+      setRecordRegion(null);
       await invoke("hide_overlay");
     }
   }
@@ -96,7 +130,7 @@ export default function OverlayApp() {
       onKeyDown={handleKeyDown}
       className="overlay-root"
     >
-      {rect && (
+      {rect && phase === "select" && (
         <div
           className="overlay-selection"
           style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
@@ -104,6 +138,37 @@ export default function OverlayApp() {
           <span className="overlay-dimensions">
             {Math.round(rect.width)} × {Math.round(rect.height)}
           </span>
+        </div>
+      )}
+      {phase === "confirm" && (
+        <div className="record-confirm-panel">
+          <label>
+            <input type="checkbox" checked={micEnabled} onChange={(e) => setMicEnabled(e.target.checked)} />
+            Microphone
+          </label>
+          <div className="record-confirm-actions">
+            <button
+              type="button"
+              className="button button-primary"
+              onClick={async () => {
+                await emit("record-confirmed", { region: recordRegion, micEnabled });
+                await invoke("hide_overlay");
+              }}
+            >
+              Start Recording
+            </button>
+            <button
+              type="button"
+              className="button"
+              onClick={async () => {
+                setPhase("select");
+                setRecordRegion(null);
+                await invoke("hide_overlay");
+              }}
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       )}
     </div>
