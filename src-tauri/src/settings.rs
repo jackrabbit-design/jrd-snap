@@ -104,6 +104,8 @@ pub fn save_settings(config_dir: &Path, settings: &UploadSettings) -> Result<(),
 pub struct HotkeySettings {
     pub capture_area: String,
     pub capture_full: String,
+    pub record_area: String,
+    pub record_full: String,
 }
 
 impl Default for HotkeySettings {
@@ -111,6 +113,8 @@ impl Default for HotkeySettings {
         HotkeySettings {
             capture_area: "CommandOrControl+Shift+2".into(),
             capture_full: "CommandOrControl+Shift+3".into(),
+            record_area: "CommandOrControl+Shift+4".into(),
+            record_full: "CommandOrControl+Shift+5".into(),
         }
     }
 }
@@ -212,6 +216,8 @@ mod tests {
         let hotkeys = HotkeySettings {
             capture_area: "CommandOrControl+Shift+9".into(),
             capture_full: "CommandOrControl+Shift+8".into(),
+            record_area: "CommandOrControl+Shift+7".into(),
+            record_full: "CommandOrControl+Shift+6".into(),
         };
         save_hotkeys(dir.path(), &hotkeys).unwrap();
         assert_eq!(load_hotkeys(dir.path()), hotkeys);

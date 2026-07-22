@@ -34,6 +34,18 @@ pub(crate) fn register_shortcuts(app: &tauri::AppHandle) -> Result<(), String> {
         }
     })
     .map_err(|e| format!("capture_full shortcut \"{}\": {e}", hotkeys.capture_full))?;
+    gs.on_shortcut(hotkeys.record_area.as_str(), |app, _shortcut, event| {
+        if event.state() == ShortcutState::Pressed {
+            app.emit("trigger-record-area", ()).ok();
+        }
+    })
+    .map_err(|e| format!("record_area shortcut \"{}\": {e}", hotkeys.record_area))?;
+    gs.on_shortcut(hotkeys.record_full.as_str(), |app, _shortcut, event| {
+        if event.state() == ShortcutState::Pressed {
+            app.emit("trigger-record-full", ()).ok();
+        }
+    })
+    .map_err(|e| format!("record_full shortcut \"{}\": {e}", hotkeys.record_full))?;
     Ok(())
 }
 

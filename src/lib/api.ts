@@ -37,6 +37,8 @@ export function hasCredentials(): Promise<boolean> {
 export interface HotkeySettings {
   captureArea: string;
   captureFull: string;
+  recordArea: string;
+  recordFull: string;
 }
 
 export function getHotkeySettings(): Promise<HotkeySettings> {
