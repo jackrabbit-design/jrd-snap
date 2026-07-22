@@ -1,6 +1,6 @@
 use crate::settings::{Credentials, Provider, UploadSettings};
 use aws_sdk_s3::config::{Credentials as AwsCredentials, Region};
-use aws_sdk_s3::error::DisplayErrorContext;
+use aws_sdk_s3::error::{DisplayErrorContext, ProvideErrorMetadata};
 use aws_sdk_s3::Client;
 
 pub fn build_public_url(settings: &UploadSettings, key: &str) -> String {
@@ -42,21 +42,43 @@ pub async fn upload_object(
 
     let client = Client::from_conf(config_builder.build());
 
-    client
+    let result = client
         .put_object()
         .bucket(&settings.bucket)
         .key(key)
-        .body(bytes.into())
+        .body(bytes.clone().into())
         .content_type(content_type)
         .acl(aws_sdk_s3::types::ObjectCannedAcl::PublicRead)
         .send()
-        .await
-        // SdkError's own Display impl collapses to a generic classification
-        // like "service error" — DisplayErrorContext walks the full source
-        // chain (HTTP status, AWS error code, message) so failures are
-        // actually diagnosable (bad credentials, wrong region, bucket ACL
-        // policy, etc.) instead of a dead end.
-        .map_err(|e| format!("{}", DisplayErrorContext(e)))?;
+        .await;
+
+    if let Err(e) = &result {
+        if e.code() == Some("AccessControlListNotSupported") {
+            // Modern S3 buckets default to "Object Ownership: Bucket owner
+            // enforced", which disables ACLs entirely and rejects any PUT
+            // that specifies one. Such buckets are expected to be made
+            // public via a bucket policy instead — retry without an ACL;
+            // if the bucket owner has that policy in place, the object is
+            // already public once uploaded.
+            client
+                .put_object()
+                .bucket(&settings.bucket)
+                .key(key)
+                .body(bytes.into())
+                .content_type(content_type)
+                .send()
+                .await
+                .map_err(|e| format!("{}", DisplayErrorContext(e)))?;
+            return Ok(());
+        }
+    }
+
+    // SdkError's own Display impl collapses to a generic classification
+    // like "service error" — DisplayErrorContext walks the full source
+    // chain (HTTP status, AWS error code, message) so failures are
+    // actually diagnosable (bad credentials, wrong region, bucket ACL
+    // policy, etc.) instead of a dead end.
+    result.map_err(|e| format!("{}", DisplayErrorContext(e)))?;
 
     Ok(())
 }
