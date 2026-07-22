@@ -53,13 +53,19 @@ export default function OverlayApp() {
     // pixels, since xcap's capture_image() returns full-resolution physical
     // pixels. On HiDPI displays (devicePixelRatio !== 1) these spaces differ.
     const dpr = window.devicePixelRatio;
-    await emit("overlay-selection", {
+    const rect = {
       x: Math.round(x * dpr),
       y: Math.round(y * dpr),
       width: Math.round(width * dpr),
       height: Math.round(height * dpr),
-    });
+    };
+    // Hide the overlay (including its semi-transparent dark tint) BEFORE
+    // triggering the actual screen capture, and give the window server a
+    // moment to actually composite that away — otherwise the capture can
+    // include the overlay's own dimming, making everything look darker.
     await invoke("hide_overlay");
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    await emit("overlay-selection", rect);
   }
 
   async function handleKeyDown(e: React.KeyboardEvent) {
