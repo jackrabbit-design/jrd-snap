@@ -291,11 +291,23 @@ textarea {
 .editor-canvas-container {
   flex: 1;
   overflow: auto;
+  padding: var(--space-4);
+  background: var(--bg);
+}
+
+/* Frames the captured image + annotations as a distinct panel (card) inside
+   the scrollable container, instead of the canvas bleeding edge-to-edge. */
+.canvas-panel {
+  display: inline-block;
   background: repeating-conic-gradient(
       color-mix(in srgb, var(--fg) 4%, transparent) 0% 25%,
       transparent 0% 50%
     )
     50% / 20px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
 }
 
 /* Overlay window */

@@ -238,7 +238,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
   }
 
   return (
-    <div ref={containerRef} style={{ position: "relative", display: "inline-block" }}>
+    <div ref={containerRef} className="canvas-panel" style={{ position: "relative" }}>
       <Stage
         ref={ref}
         width={image?.width ?? 800}
