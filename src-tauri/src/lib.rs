@@ -88,7 +88,10 @@ pub fn run() {
             commands::capture_full_screen,
             commands::capture_area,
             commands::upload_file,
+            commands::start_recording_command,
+            commands::stop_recording_command,
         ])
+        .manage(recording::RecordingState::default())
         .setup(|app| {
             tray::build_tray(app.handle())?;
 

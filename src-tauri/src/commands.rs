@@ -1,11 +1,12 @@
 use crate::capture::{self, CaptureRect};
 use crate::filename;
 use crate::object_key::build_object_key;
+use crate::recording::{self, CaptureRegion, RecordingState};
 use crate::settings::{
     self, CredentialStore, Credentials, HotkeySettings, KeyringCredentialStore, UploadSettings,
 };
 use crate::upload::{build_public_url, upload_object};
-use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, Position, Size};
+use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, Position, Size, State};
 
 #[tauri::command]
 pub fn get_upload_settings(app: AppHandle) -> Result<UploadSettings, String> {
@@ -93,4 +94,27 @@ pub async fn upload_file(app: AppHandle, bytes: Vec<u8>, extension: String) -> R
     upload_object(&settings, &creds, &key, bytes, content_type).await?;
 
     Ok(build_public_url(&settings, &key))
+}
+
+#[tauri::command]
+pub fn start_recording_command(
+    state: State<RecordingState>,
+    region: Option<CaptureRegion>,
+    mic_enabled: bool,
+) -> Result<String, String> {
+    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+    if guard.is_some() {
+        return Err("a recording is already in progress".to_string());
+    }
+    let output_path = std::env::temp_dir().join(format!("pxl-recording-{}.mp4", std::process::id()));
+    let child = recording::start_recording(region, mic_enabled, &output_path)?;
+    *guard = Some((child, output_path.clone()));
+    Ok(output_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn stop_recording_command(state: State<RecordingState>) -> Result<(), String> {
+    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+    let (child, _path) = guard.take().ok_or("no recording in progress")?;
+    recording::stop_recording(child)
 }
