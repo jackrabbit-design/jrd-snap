@@ -63,7 +63,9 @@ pub fn show_overlay(app: AppHandle) -> Result<(), String> {
     let win = app.get_webview_window("overlay").ok_or("overlay window missing")?;
     resize_overlay_to_monitor(&win)?;
     win.show().map_err(|e| e.to_string())?;
-    win.set_focus().map_err(|e| e.to_string())
+    win.set_focus().map_err(|e| e.to_string())?;
+    app.emit_to("overlay", "overlay-mode", serde_json::json!({ "purpose": "screenshot" }))
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

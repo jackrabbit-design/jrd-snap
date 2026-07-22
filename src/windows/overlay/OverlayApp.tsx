@@ -41,12 +41,19 @@ export default function OverlayApp() {
   }, []);
 
   useEffect(() => {
-    const unlisten = listen<{ purpose: "record"; area: boolean }>("overlay-mode", (event) => {
-      setPurpose(event.payload.purpose);
-      // Full-screen recording skips straight to the confirm panel; area
-      // recording goes through the existing drag-select first.
-      setPhase(event.payload.area ? "select" : "confirm");
-    });
+    const unlisten = listen<{ purpose: "screenshot" } | { purpose: "record"; area: boolean }>(
+      "overlay-mode",
+      (event) => {
+        setPurpose(event.payload.purpose);
+        if (event.payload.purpose === "record") {
+          // Full-screen recording skips straight to the confirm panel; area
+          // recording goes through the existing drag-select first.
+          setPhase(event.payload.area ? "select" : "confirm");
+        } else {
+          setPhase("select");
+        }
+      },
+    );
     return () => {
       unlisten.then((f) => f());
     };
@@ -105,6 +112,7 @@ export default function OverlayApp() {
       setStart(null);
       setCurrent(null);
       setPhase("select");
+      setPurpose("screenshot");
       setRecordRegion(null);
       await invoke("hide_overlay");
     }
@@ -162,6 +170,7 @@ export default function OverlayApp() {
               className="button"
               onClick={async () => {
                 setPhase("select");
+                setPurpose("screenshot");
                 setRecordRegion(null);
                 await invoke("hide_overlay");
               }}
