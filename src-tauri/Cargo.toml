@@ -33,6 +33,7 @@ base64 = "0.22"
 aws-sdk-s3 = "1"
 aws-config = "1"
 tokio = { version = "1", features = ["rt-multi-thread"] }
+ffmpeg-sidecar = "1"
 
 [dev-dependencies]
 tempfile = "3"

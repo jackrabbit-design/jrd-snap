@@ -6,6 +6,7 @@ mod object_key;
 mod settings;
 mod commands;
 mod upload;
+mod recording;
 
 use tauri::{Emitter, Listener, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
@@ -90,6 +91,18 @@ pub fn run() {
         ])
         .setup(|app| {
             tray::build_tray(app.handle())?;
+
+            let handle_ffmpeg = app.handle().clone();
+            std::thread::spawn(move || {
+                if let Err(e) = recording::ensure_ffmpeg() {
+                    eprintln!("ffmpeg setup failed: {e}");
+                    notify_capture_failed(
+                        &handle_ffmpeg,
+                        &format!("ffmpeg setup failed — recording will not work: {e}"),
+                    );
+                }
+            });
+
             if let Err(e) = register_shortcuts(app.handle()) {
                 eprintln!("failed to register global shortcuts: {e}");
             }
