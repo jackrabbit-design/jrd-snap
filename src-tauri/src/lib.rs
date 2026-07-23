@@ -7,6 +7,7 @@ mod settings;
 mod commands;
 mod upload;
 mod recording;
+mod trim;
 
 use tauri::{Emitter, Listener, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
@@ -124,6 +125,7 @@ pub fn run() {
             commands::capture_full_screen,
             commands::capture_area,
             commands::upload_file,
+            commands::trim_and_upload,
             commands::start_recording_command,
             commands::stop_recording_command,
         ])

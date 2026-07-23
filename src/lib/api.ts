@@ -56,3 +56,7 @@ export function uploadFile(bytes: Uint8Array, extension: string): Promise<string
 export function showOverlayForRecording(area: boolean): Promise<void> {
   return invoke("show_overlay_for_recording", { area });
 }
+
+export function trimAndUpload(inputPath: string, inPoint: number, outPoint: number): Promise<string> {
+  return invoke("trim_and_upload", { inputPath, inPoint, outPoint });
+}

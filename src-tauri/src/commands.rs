@@ -94,21 +94,46 @@ pub fn capture_area(rect: CaptureRect) -> Result<Vec<u8>, String> {
     capture::capture_area_png(rect)
 }
 
-#[tauri::command]
-pub async fn upload_file(app: AppHandle, bytes: Vec<u8>, extension: String) -> Result<String, String> {
+async fn upload_bytes(app: &AppHandle, bytes: Vec<u8>, extension: &str) -> Result<String, String> {
     let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     let settings = settings::load_settings(&config_dir);
     let creds = KeyringCredentialStore
         .get()
         .ok_or("no upload credentials configured — open Settings and add them")?;
 
-    let name = filename::generate_filename(settings.filename_prefix.as_deref(), &extension);
+    let name = filename::generate_filename(settings.filename_prefix.as_deref(), extension);
     let key = build_object_key(settings.key_prefix.as_deref(), &name);
-    let content_type = if extension == "png" { "image/png" } else { "application/octet-stream" };
+    let content_type = match extension {
+        "png" => "image/png",
+        "mp4" => "video/mp4",
+        _ => "application/octet-stream",
+    };
 
     upload_object(&settings, &creds, &key, bytes, content_type).await?;
 
     Ok(build_public_url(&settings, &key))
+}
+
+#[tauri::command]
+pub async fn upload_file(app: AppHandle, bytes: Vec<u8>, extension: String) -> Result<String, String> {
+    upload_bytes(&app, bytes, &extension).await
+}
+
+#[tauri::command]
+pub async fn trim_and_upload(
+    app: AppHandle,
+    input_path: String,
+    in_point: f64,
+    out_point: f64,
+) -> Result<String, String> {
+    let input = std::path::PathBuf::from(&input_path);
+    let output = std::env::temp_dir().join(format!("pxl-trimmed-{}.mp4", std::process::id()));
+    crate::trim::trim_video(&input, &output, in_point, out_point)?;
+    let bytes = std::fs::read(&output).map_err(|e| e.to_string())?;
+    let url = upload_bytes(&app, bytes, "mp4").await?;
+    let _ = std::fs::remove_file(&output);
+    let _ = std::fs::remove_file(&input);
+    Ok(url)
 }
 
 #[tauri::command]

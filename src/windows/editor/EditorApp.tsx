@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
@@ -7,7 +8,7 @@ import type Konva from "konva";
 import AnnotationCanvas from "./AnnotationCanvas";
 import Toolbar from "./Toolbar";
 import { exportStageToBytes } from "./export";
-import { uploadFile } from "../../lib/api";
+import { uploadFile, trimAndUpload } from "../../lib/api";
 import { applyCrop, initialState, setTool, type EditorState } from "./toolState";
 import VideoTrimmer from "./VideoTrimmer";
 import { initialTrimState, type TrimState } from "./trimState";
@@ -15,6 +16,7 @@ import { initialTrimState, type TrimState } from "./trimState";
 export default function EditorApp() {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
+  const [videoPath, setVideoPath] = useState<string | null>(null);
   const [trim, setTrim] = useState<TrimState>(initialTrimState(0));
   const [state, setState] = useState<EditorState>(initialState);
   const [color, setColor] = useState("#ff0000");
@@ -37,7 +39,8 @@ export default function EditorApp() {
 
   useEffect(() => {
     const unlisten = listen<string>("editor-load-video", (event) => {
-      setVideoSrc(`file://${event.payload}`);
+      setVideoPath(event.payload);
+      setVideoSrc(convertFileSrc(event.payload));
       setImageSrc(null);
       setTrim(initialTrimState(0));
     });
@@ -46,7 +49,21 @@ export default function EditorApp() {
     };
   }, []);
 
-  async function handleTrimAndUpload() {}
+  async function handleTrimAndUpload() {
+    if (!videoPath) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const url = await trimAndUpload(videoPath, trim.inPoint, trim.outPoint);
+      await writeText(url);
+      await sendNotification({ title: "pxl", body: `Uploaded — link copied to clipboard\n${url}` });
+      await getCurrentWindow().hide();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setUploading(false);
+    }
+  }
 
   function handleApplyCrop() {
     const cropShape = state.shapes.find((s) => s.type === "crop");

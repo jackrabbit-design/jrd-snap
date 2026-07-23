@@ -48,7 +48,11 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$TEMP/pxl-recording-*.mp4", "$TEMP/pxl-trimmed-*.mp4"]
+      }
     }
   },
   "bundle": {
