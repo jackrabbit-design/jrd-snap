@@ -62,6 +62,13 @@ pub(crate) fn notify_capture_failed(app: &tauri::AppHandle, e: &str) {
     }
 }
 
+pub(crate) fn set_recording_tray_state(app: &tauri::AppHandle, recording: bool) {
+    let items = app.state::<crate::tray::TrayMenuItems>();
+    let _ = items.stop_recording.set_enabled(recording);
+    let _ = items.record_area.set_enabled(!recording);
+    let _ = items.record_full.set_enabled(!recording);
+}
+
 pub(crate) fn open_editor_with_png(app: &tauri::AppHandle, png_bytes: Vec<u8>) {
     use base64::Engine;
     let b64 = base64::engine::general_purpose::STANDARD.encode(&png_bytes);
@@ -167,6 +174,77 @@ pub fn run() {
             } else {
                 eprintln!("overlay window missing; overlay-selection listener not registered");
             }
+
+            let handle4 = app.handle().clone();
+            app.listen("trigger-record-area", move |_event| {
+                if let Err(e) = commands::show_overlay_for_recording(handle4.clone(), true) {
+                    eprintln!("show_overlay_for_recording failed: {e}");
+                }
+            });
+
+            let handle5 = app.handle().clone();
+            app.listen("trigger-record-full", move |_event| {
+                if let Err(e) = commands::show_overlay_for_recording(handle5.clone(), false) {
+                    eprintln!("show_overlay_for_recording failed: {e}");
+                }
+            });
+
+            if let Some(overlay_window) = app.get_webview_window("overlay") {
+                let handle6 = app.handle().clone();
+                overlay_window.listen("record-confirmed", move |event| {
+                    #[derive(serde::Deserialize)]
+                    struct RecordConfirmed {
+                        region: Option<recording::CaptureRegion>,
+                        #[serde(rename = "micEnabled")]
+                        mic_enabled: bool,
+                    }
+                    match serde_json::from_str::<RecordConfirmed>(event.payload()) {
+                        Ok(confirmed) => {
+                            let state = handle6.state::<recording::RecordingState>();
+                            let output_path = std::env::temp_dir()
+                                .join(format!("pxl-recording-{}.mp4", std::process::id()));
+                            match recording::start_recording(
+                                confirmed.region,
+                                confirmed.mic_enabled,
+                                &output_path,
+                            ) {
+                                Ok(child) => {
+                                    *state.0.lock().unwrap() = Some((child, output_path));
+                                    set_recording_tray_state(&handle6, true);
+                                }
+                                Err(e) => notify_capture_failed(
+                                    &handle6,
+                                    &format!("failed to start recording: {e}"),
+                                ),
+                            }
+                        }
+                        Err(e) => eprintln!("failed to parse record-confirmed payload: {e}"),
+                    }
+                });
+            }
+
+            let handle7 = app.handle().clone();
+            app.listen("trigger-stop-recording", move |_event| {
+                let state = handle7.state::<recording::RecordingState>();
+                let entry = state.0.lock().unwrap().take();
+                if let Some((child, _output_path)) = entry {
+                    match recording::stop_recording(child) {
+                        Ok(()) => {
+                            set_recording_tray_state(&handle7, false);
+                            // Task 8 defines open_editor_with_video and adds the call
+                            // `open_editor_with_video(&handle7, &output_path);` here
+                            // (renaming _output_path back to output_path at that
+                            // point) — this task deliberately stops short of it since
+                            // that function doesn't exist yet and this file must still
+                            // compile cleanly on its own at the end of this task.
+                        }
+                        Err(e) => notify_capture_failed(
+                            &handle7,
+                            &format!("failed to stop recording: {e}"),
+                        ),
+                    }
+                }
+            });
 
             Ok(())
         })
