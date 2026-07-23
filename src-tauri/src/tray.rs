@@ -51,10 +51,13 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
                     eprintln!("show_overlay failed: {e}");
                 }
             }
-            "capture_full" => match crate::capture::capture_full_screen_png() {
-                Ok(bytes) => crate::open_editor_with_png(app, bytes),
-                Err(e) => crate::notify_capture_failed(app, &e),
-            },
+            "capture_full" => {
+                crate::discard_any_active_recording(app);
+                match crate::capture::capture_full_screen_png() {
+                    Ok(bytes) => crate::open_editor_with_png(app, bytes),
+                    Err(e) => crate::notify_capture_failed(app, &e),
+                }
+            }
             "record_area" => {
                 if let Err(e) = crate::commands::show_overlay_for_recording(app.clone(), true) {
                     eprintln!("show_overlay_for_recording failed: {e}");

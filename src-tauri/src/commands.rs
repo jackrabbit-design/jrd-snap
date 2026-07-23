@@ -60,6 +60,7 @@ fn resize_overlay_to_monitor(win: &tauri::WebviewWindow) -> Result<(), String> {
 
 #[tauri::command]
 pub fn show_overlay(app: AppHandle) -> Result<(), String> {
+    crate::discard_any_active_recording(&app);
     let win = app.get_webview_window("overlay").ok_or("overlay window missing")?;
     resize_overlay_to_monitor(&win)?;
     win.show().map_err(|e| e.to_string())?;

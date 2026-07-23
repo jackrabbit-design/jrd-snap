@@ -200,6 +200,7 @@ pub fn run() {
 
             let handle = app.handle().clone();
             app.listen("trigger-capture-full", move |_event| {
+                discard_any_active_recording(&handle);
                 match capture::capture_full_screen_png() {
                     Ok(bytes) => open_editor_with_png(&handle, bytes),
                     Err(e) => notify_capture_failed(&handle, &e),
