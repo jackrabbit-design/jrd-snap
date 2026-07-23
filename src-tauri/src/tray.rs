@@ -80,6 +80,10 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
                 }
             }
             "quit" => {
+                let state = app.state::<crate::recording::RecordingState>();
+                if let Some((child, _path)) = state.0.lock().unwrap().take() {
+                    let _ = crate::recording::stop_recording(child);
+                }
                 app.exit(0);
             }
             _ => {}

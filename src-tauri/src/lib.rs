@@ -63,6 +63,15 @@ pub(crate) fn notify_capture_failed(app: &tauri::AppHandle, e: &str) {
     }
 }
 
+pub(crate) fn discard_any_active_recording(app: &tauri::AppHandle) {
+    let state = app.state::<recording::RecordingState>();
+    let entry = state.0.lock().unwrap().take();
+    if let Some((child, path)) = entry {
+        let _ = recording::stop_recording(child);
+        let _ = std::fs::remove_file(&path);
+    }
+}
+
 pub(crate) fn set_recording_tray_state(app: &tauri::AppHandle, recording: bool) {
     let items = app.state::<crate::tray::TrayMenuItems>();
     let _ = items.stop_recording.set_enabled(recording);

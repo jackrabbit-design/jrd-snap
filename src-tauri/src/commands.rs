@@ -70,6 +70,7 @@ pub fn show_overlay(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub fn show_overlay_for_recording(app: AppHandle, area: bool) -> Result<(), String> {
+    crate::discard_any_active_recording(&app);
     let win = app.get_webview_window("overlay").ok_or("overlay window missing")?;
     resize_overlay_to_monitor(&win)?;
     win.show().map_err(|e| e.to_string())?;
@@ -85,12 +86,14 @@ pub fn hide_overlay(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn capture_full_screen() -> Result<Vec<u8>, String> {
+pub fn capture_full_screen(app: AppHandle) -> Result<Vec<u8>, String> {
+    crate::discard_any_active_recording(&app);
     capture::capture_full_screen_png()
 }
 
 #[tauri::command]
-pub fn capture_area(rect: CaptureRect) -> Result<Vec<u8>, String> {
+pub fn capture_area(app: AppHandle, rect: CaptureRect) -> Result<Vec<u8>, String> {
+    crate::discard_any_active_recording(&app);
     capture::capture_area_png(rect)
 }
 
