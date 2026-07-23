@@ -69,6 +69,22 @@ pub(crate) fn set_recording_tray_state(app: &tauri::AppHandle, recording: bool) 
     let _ = items.record_full.set_enabled(!recording);
 }
 
+pub(crate) fn open_editor_with_video(app: &tauri::AppHandle, video_path: &std::path::Path) {
+    if let Some(win) = app.get_webview_window("editor") {
+        if let Err(e) = win.show() {
+            eprintln!("failed to show editor window: {e}");
+        }
+        if let Err(e) = win.set_focus() {
+            eprintln!("failed to focus editor window: {e}");
+        }
+        if let Err(e) = app.emit_to("editor", "editor-load-video", video_path.to_string_lossy().to_string()) {
+            eprintln!("failed to emit editor-load-video: {e}");
+        }
+    } else {
+        eprintln!("editor window missing");
+    }
+}
+
 pub(crate) fn open_editor_with_png(app: &tauri::AppHandle, png_bytes: Vec<u8>) {
     use base64::Engine;
     let b64 = base64::engine::general_purpose::STANDARD.encode(&png_bytes);
@@ -227,16 +243,11 @@ pub fn run() {
             app.listen("trigger-stop-recording", move |_event| {
                 let state = handle7.state::<recording::RecordingState>();
                 let entry = state.0.lock().unwrap().take();
-                if let Some((child, _output_path)) = entry {
+                if let Some((child, output_path)) = entry {
                     match recording::stop_recording(child) {
                         Ok(()) => {
                             set_recording_tray_state(&handle7, false);
-                            // Task 8 defines open_editor_with_video and adds the call
-                            // `open_editor_with_video(&handle7, &output_path);` here
-                            // (renaming _output_path back to output_path at that
-                            // point) — this task deliberately stops short of it since
-                            // that function doesn't exist yet and this file must still
-                            // compile cleanly on its own at the end of this task.
+                            open_editor_with_video(&handle7, &output_path);
                         }
                         Err(e) => notify_capture_failed(
                             &handle7,

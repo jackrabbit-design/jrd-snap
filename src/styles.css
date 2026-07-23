@@ -345,6 +345,36 @@ textarea {
   white-space: nowrap;
 }
 
+/* Video trim mode (editor window) */
+
+.video-trimmer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.video-preview {
+  max-width: 100%;
+  border-radius: var(--radius-sm);
+}
+
+.trim-scrubber {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.trim-labels {
+  display: flex;
+  gap: var(--space-3);
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
 .record-confirm-panel {
   position: fixed;
   top: 50%;

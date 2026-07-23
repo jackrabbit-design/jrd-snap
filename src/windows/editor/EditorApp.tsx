@@ -9,9 +9,13 @@ import Toolbar from "./Toolbar";
 import { exportStageToBytes } from "./export";
 import { uploadFile } from "../../lib/api";
 import { applyCrop, initialState, setTool, type EditorState } from "./toolState";
+import VideoTrimmer from "./VideoTrimmer";
+import { initialTrimState, type TrimState } from "./trimState";
 
 export default function EditorApp() {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
+  const [videoSrc, setVideoSrc] = useState<string | null>(null);
+  const [trim, setTrim] = useState<TrimState>(initialTrimState(0));
   const [state, setState] = useState<EditorState>(initialState);
   const [color, setColor] = useState("#ff0000");
   const [strokeWidth, setStrokeWidth] = useState(3);
@@ -24,11 +28,25 @@ export default function EditorApp() {
     const unlisten = listen<string>("editor-load-image", (event) => {
       setImageSrc(`data:image/png;base64,${event.payload}`);
       setState(initialState);
+      setVideoSrc(null);
     });
     return () => {
       unlisten.then((f) => f());
     };
   }, []);
+
+  useEffect(() => {
+    const unlisten = listen<string>("editor-load-video", (event) => {
+      setVideoSrc(`file://${event.payload}`);
+      setImageSrc(null);
+      setTrim(initialTrimState(0));
+    });
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, []);
+
+  async function handleTrimAndUpload() {}
 
   function handleApplyCrop() {
     const cropShape = state.shapes.find((s) => s.type === "crop");
@@ -81,6 +99,27 @@ export default function EditorApp() {
       stageRef.current.batchDraw();
       setUploading(false);
     }
+  }
+
+  if (videoSrc) {
+    return (
+      <div className="editor-page">
+        <div className="editor-actions">
+          <button type="button" className="button button-primary" onClick={handleTrimAndUpload} disabled={uploading}>
+            {uploading ? "Uploading…" : "Save & Upload"}
+          </button>
+        </div>
+        {error && (
+          <div className="error-banner">
+            <span>{error}</span>
+            <button type="button" className="button" onClick={handleTrimAndUpload}>
+              Retry
+            </button>
+          </div>
+        )}
+        <VideoTrimmer videoSrc={videoSrc} trim={trim} onTrimChange={setTrim} />
+      </div>
+    );
   }
 
   if (!imageSrc) {
