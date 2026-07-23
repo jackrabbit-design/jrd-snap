@@ -5,6 +5,7 @@ import App from "./App";
 import SettingsApp from "./windows/settings/SettingsApp";
 import OverlayApp from "./windows/overlay/OverlayApp";
 import EditorApp from "./windows/editor/EditorApp";
+import RecordingControls from "./windows/recording-controls/RecordingControls";
 
 const hash = window.location.hash;
 const Root = hash.startsWith("#/settings")
@@ -13,6 +14,8 @@ const Root = hash.startsWith("#/settings")
   ? OverlayApp
   : hash.startsWith("#/editor")
   ? EditorApp
+  : hash.startsWith("#/recording-controls")
+  ? RecordingControls
   : App;
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(

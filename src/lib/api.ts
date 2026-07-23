@@ -38,7 +38,6 @@ export interface HotkeySettings {
   captureArea: string;
   captureFull: string;
   recordArea: string;
-  recordFull: string;
 }
 
 export function getHotkeySettings(): Promise<HotkeySettings> {
@@ -53,10 +52,33 @@ export function uploadFile(bytes: Uint8Array, extension: string): Promise<string
   return invoke("upload_file", { bytes: Array.from(bytes), extension });
 }
 
-export function showOverlayForRecording(area: boolean): Promise<void> {
-  return invoke("show_overlay_for_recording", { area });
+export function showOverlayForRecording(): Promise<void> {
+  return invoke("show_overlay_for_recording");
 }
 
 export function trimAndUpload(inputPath: string, inPoint: number, outPoint: number): Promise<string> {
   return invoke("trim_and_upload", { inputPath, inPoint, outPoint });
+}
+
+export interface CaptureRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export function startRecording(region: CaptureRegion, micEnabled: boolean): Promise<string> {
+  return invoke("start_recording_command", { region, micEnabled });
+}
+
+export type LastCapture =
+  | { kind: "image"; pngBase64: string }
+  | { kind: "video"; path: string };
+
+export function getLastCapture(): Promise<LastCapture | null> {
+  return invoke("get_last_capture");
+}
+
+export function readVideoBase64(path: string): Promise<string> {
+  return invoke("read_video_base64", { path });
 }

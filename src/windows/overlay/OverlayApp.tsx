@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { startRecording } from "../../lib/api";
 
 interface Point {
   x: number;
@@ -14,7 +16,14 @@ interface CaptureRect {
   height: number;
 }
 
-type Phase = "select" | "confirm";
+interface DisplayRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+type Phase = "select" | "confirm" | "recording";
 type Purpose = "screenshot" | "record";
 
 export default function OverlayApp() {
@@ -26,6 +35,7 @@ export default function OverlayApp() {
   const [purpose, setPurpose] = useState<Purpose>("screenshot");
   const [micEnabled, setMicEnabled] = useState(false);
   const [recordRegion, setRecordRegion] = useState<CaptureRect | null>(null);
+  const [recordDisplayRegion, setRecordDisplayRegion] = useState<DisplayRect | null>(null);
 
   // Some WebKit/WKWebView builds don't reliably propagate a CSS `cursor`
   // set only on a child element over a transparent, borderless window —
@@ -41,19 +51,28 @@ export default function OverlayApp() {
   }, []);
 
   useEffect(() => {
-    const unlisten = listen<{ purpose: "screenshot" } | { purpose: "record"; area: boolean }>(
-      "overlay-mode",
-      (event) => {
-        setPurpose(event.payload.purpose);
-        if (event.payload.purpose === "record") {
-          // Full-screen recording skips straight to the confirm panel; area
-          // recording goes through the existing drag-select first.
-          setPhase(event.payload.area ? "select" : "confirm");
-        } else {
-          setPhase("select");
-        }
-      },
-    );
+    const unlisten = listen<{ purpose: "screenshot" | "record" }>("overlay-mode", (event) => {
+      setPurpose(event.payload.purpose);
+      setPhase("select");
+    });
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, []);
+
+  // Fires whenever a recording actually stops, regardless of trigger (this
+  // window's own Stop button, the tray menu, or a hotkey) — the tray/lib.rs
+  // stop path is the single source of truth, so the overlay just reacts to
+  // it instead of hiding/resetting itself directly from its own button.
+  useEffect(() => {
+    const unlisten = listen("trigger-stop-recording", () => {
+      setPhase("select");
+      setPurpose("screenshot");
+      setRecordRegion(null);
+      setRecordDisplayRegion(null);
+      getCurrentWindow().setIgnoreCursorEvents(false);
+      invoke("hide_overlay");
+    });
     return () => {
       unlisten.then((f) => f());
     };
@@ -95,6 +114,7 @@ export default function OverlayApp() {
     };
     if (purpose === "record") {
       setRecordRegion(rect);
+      setRecordDisplayRegion({ left: x, top: y, width, height });
       setPhase("confirm");
       return;
     }
@@ -114,8 +134,33 @@ export default function OverlayApp() {
       setPhase("select");
       setPurpose("screenshot");
       setRecordRegion(null);
+      setRecordDisplayRegion(null);
       await invoke("hide_overlay");
     }
+  }
+
+  async function handleStartRecording() {
+    if (!recordRegion) return;
+    try {
+      await startRecording(recordRegion, micEnabled);
+      setPhase("recording");
+      await getCurrentWindow().setIgnoreCursorEvents(true);
+    } catch (e) {
+      console.error("failed to start recording", e);
+      setPhase("select");
+      setPurpose("screenshot");
+      setRecordRegion(null);
+      setRecordDisplayRegion(null);
+      await invoke("hide_overlay");
+    }
+  }
+
+  async function handleCancelConfirm() {
+    setPhase("select");
+    setPurpose("screenshot");
+    setRecordRegion(null);
+    setRecordDisplayRegion(null);
+    await invoke("hide_overlay");
   }
 
   const rect =
@@ -155,30 +200,25 @@ export default function OverlayApp() {
             Microphone
           </label>
           <div className="record-confirm-actions">
-            <button
-              type="button"
-              className="button button-primary"
-              onClick={async () => {
-                await emit("record-confirmed", { region: recordRegion, micEnabled });
-                await invoke("hide_overlay");
-              }}
-            >
+            <button type="button" className="button button-primary" onClick={handleStartRecording}>
               Start Recording
             </button>
-            <button
-              type="button"
-              className="button"
-              onClick={async () => {
-                setPhase("select");
-                setPurpose("screenshot");
-                setRecordRegion(null);
-                await invoke("hide_overlay");
-              }}
-            >
+            <button type="button" className="button" onClick={handleCancelConfirm}>
               Cancel
             </button>
           </div>
         </div>
+      )}
+      {phase === "recording" && recordDisplayRegion && (
+        <div
+          className="recording-border"
+          style={{
+            left: recordDisplayRegion.left,
+            top: recordDisplayRegion.top,
+            width: recordDisplayRegion.width,
+            height: recordDisplayRegion.height,
+          }}
+        />
       )}
     </div>
   );

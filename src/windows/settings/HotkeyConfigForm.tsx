@@ -5,7 +5,6 @@ const DEFAULT: HotkeySettings = {
   captureArea: "CommandOrControl+Shift+2",
   captureFull: "CommandOrControl+Shift+3",
   recordArea: "CommandOrControl+Shift+4",
-  recordFull: "CommandOrControl+Shift+5",
 };
 
 const MODIFIER_KEYS = new Set(["Control", "Meta", "Alt", "Shift"]);
@@ -114,11 +113,6 @@ export default function HotkeyConfigForm() {
         label="Record Area"
         value={hotkeys.recordArea}
         onChange={(v) => setHotkeys((h) => ({ ...h, recordArea: v }))}
-      />
-      <HotkeyRecorderField
-        label="Record Full Screen"
-        value={hotkeys.recordFull}
-        onChange={(v) => setHotkeys((h) => ({ ...h, recordFull: v }))}
       />
       <div className="settings-form-footer">
         <button type="submit" className="button button-primary">

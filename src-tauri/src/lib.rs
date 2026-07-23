@@ -9,7 +9,7 @@ mod upload;
 mod recording;
 mod trim;
 
-use tauri::{Emitter, Listener, Manager};
+use tauri::{Emitter, Listener, Manager, PhysicalPosition, PhysicalSize, Position, Size};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
 
@@ -41,12 +41,6 @@ pub(crate) fn register_shortcuts(app: &tauri::AppHandle) -> Result<(), String> {
         }
     })
     .map_err(|e| format!("record_area shortcut \"{}\": {e}", hotkeys.record_area))?;
-    gs.on_shortcut(hotkeys.record_full.as_str(), |app, _shortcut, event| {
-        if event.state() == ShortcutState::Pressed {
-            app.emit("trigger-record-full", ()).ok();
-        }
-    })
-    .map_err(|e| format!("record_full shortcut \"{}\": {e}", hotkeys.record_full))?;
     Ok(())
 }
 
@@ -69,6 +63,34 @@ pub(crate) fn discard_any_active_recording(app: &tauri::AppHandle) {
     if let Some((child, path)) = entry {
         let _ = recording::stop_recording(child);
         let _ = std::fs::remove_file(&path);
+        set_recording_tray_state(app, false);
+        hide_recording_controls(app);
+    }
+}
+
+// Positions and shows the small floating "Stop Recording" button window just
+// below the region being recorded. This is a separate, normal (non-click-
+// through) window rather than a button on the (click-through) overlay
+// window — a click-through window never receives the mouse-enter/leave
+// events needed to toggle click-through off over just the button, so the
+// button would be unclickable if it lived there instead.
+pub(crate) fn show_recording_controls(app: &tauri::AppHandle, region: recording::CaptureRegion) {
+    let Some(win) = app.get_webview_window("recording-controls") else {
+        eprintln!("recording-controls window missing");
+        return;
+    };
+    let width = 180i32;
+    let height = 56i32;
+    let x = region.x + (region.width as i32 - width) / 2;
+    let y = region.y + region.height as i32 + 12;
+    let _ = win.set_position(Position::Physical(PhysicalPosition::new(x, y)));
+    let _ = win.set_size(Size::Physical(PhysicalSize::new(width as u32, height as u32)));
+    let _ = win.show();
+}
+
+pub(crate) fn hide_recording_controls(app: &tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("recording-controls") {
+        let _ = win.hide();
     }
 }
 
@@ -76,7 +98,6 @@ pub(crate) fn set_recording_tray_state(app: &tauri::AppHandle, recording: bool) 
     let items = app.state::<crate::tray::TrayMenuItems>();
     let _ = items.stop_recording.set_enabled(recording);
     let _ = items.record_area.set_enabled(!recording);
-    let _ = items.record_full.set_enabled(!recording);
 }
 
 /// Polls the recording's ffmpeg process every 500ms. If it's still the
@@ -102,6 +123,7 @@ pub(crate) fn monitor_recording_for_crash(app: &tauri::AppHandle, expected_path:
                     let _ = std::fs::remove_file(&expected_path);
                     notify_capture_failed(app, "recording process exited unexpectedly");
                     set_recording_tray_state(app, false);
+                    hide_recording_controls(app);
                     return;
                 }
             },
@@ -192,6 +214,8 @@ pub fn run() {
             commands::start_recording_command,
             commands::stop_recording_command,
             commands::reopen_last_capture,
+            commands::get_last_capture,
+            commands::read_video_base64,
         ])
         .manage(recording::RecordingState::default())
         .manage(LastCaptureState::default())
@@ -261,56 +285,10 @@ pub fn run() {
 
             let handle4 = app.handle().clone();
             app.listen("trigger-record-area", move |_event| {
-                if let Err(e) = commands::show_overlay_for_recording(handle4.clone(), true) {
+                if let Err(e) = commands::show_overlay_for_recording(handle4.clone()) {
                     eprintln!("show_overlay_for_recording failed: {e}");
                 }
             });
-
-            let handle5 = app.handle().clone();
-            app.listen("trigger-record-full", move |_event| {
-                if let Err(e) = commands::show_overlay_for_recording(handle5.clone(), false) {
-                    eprintln!("show_overlay_for_recording failed: {e}");
-                }
-            });
-
-            if let Some(overlay_window) = app.get_webview_window("overlay") {
-                let handle6 = app.handle().clone();
-                overlay_window.listen("record-confirmed", move |event| {
-                    #[derive(serde::Deserialize)]
-                    struct RecordConfirmed {
-                        region: Option<recording::CaptureRegion>,
-                        #[serde(rename = "micEnabled")]
-                        mic_enabled: bool,
-                    }
-                    match serde_json::from_str::<RecordConfirmed>(event.payload()) {
-                        Ok(confirmed) => {
-                            let state = handle6.state::<recording::RecordingState>();
-                            let output_path = std::env::temp_dir()
-                                .join(format!("pxl-recording-{}.mp4", std::process::id()));
-                            match recording::start_recording(
-                                confirmed.region,
-                                confirmed.mic_enabled,
-                                &output_path,
-                            ) {
-                                Ok(child) => {
-                                    *state.0.lock().unwrap() = Some((child, output_path.clone()));
-                                    set_recording_tray_state(&handle6, true);
-                                    let handle_monitor = handle6.clone();
-                                    let monitor_path = output_path.clone();
-                                    std::thread::spawn(move || {
-                                        monitor_recording_for_crash(&handle_monitor, monitor_path);
-                                    });
-                                }
-                                Err(e) => notify_capture_failed(
-                                    &handle6,
-                                    &format!("failed to start recording: {e}"),
-                                ),
-                            }
-                        }
-                        Err(e) => eprintln!("failed to parse record-confirmed payload: {e}"),
-                    }
-                });
-            }
 
             let handle7 = app.handle().clone();
             app.listen("trigger-stop-recording", move |_event| {
@@ -318,6 +296,7 @@ pub fn run() {
                 let entry = state.0.lock().unwrap().take();
                 if let Some((child, output_path)) = entry {
                     set_recording_tray_state(&handle7, false);
+                    hide_recording_controls(&handle7);
                     match recording::stop_recording(child) {
                         Ok(()) => open_editor_with_video(&handle7, &output_path),
                         Err(e) => notify_capture_failed(

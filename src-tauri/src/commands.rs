@@ -70,13 +70,13 @@ pub fn show_overlay(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn show_overlay_for_recording(app: AppHandle, area: bool) -> Result<(), String> {
+pub fn show_overlay_for_recording(app: AppHandle) -> Result<(), String> {
     crate::discard_any_active_recording(&app);
     let win = app.get_webview_window("overlay").ok_or("overlay window missing")?;
     resize_overlay_to_monitor(&win)?;
     win.show().map_err(|e| e.to_string())?;
     win.set_focus().map_err(|e| e.to_string())?;
-    app.emit_to("overlay", "overlay-mode", serde_json::json!({ "purpose": "record", "area": area }))
+    app.emit_to("overlay", "overlay-mode", serde_json::json!({ "purpose": "record" }))
         .map_err(|e| e.to_string())
 }
 
@@ -131,7 +131,10 @@ pub async fn trim_and_upload(
     out_point: f64,
 ) -> Result<String, String> {
     let input = std::path::PathBuf::from(&input_path);
-    let output = std::env::temp_dir().join(format!("pxl-trimmed-{}.mp4", std::process::id()));
+    // A random suffix, not the process id — the pid is constant for the
+    // whole session, so a second trim in one session would otherwise reuse
+    // the exact same filename.
+    let output = std::env::temp_dir().join(format!("pxl-trimmed-{}.mp4", nanoid::nanoid!(8)));
     crate::trim::trim_video(&input, &output, in_point, out_point)?;
     let bytes = std::fs::read(&output).map_err(|e| e.to_string())?;
     let url = upload_bytes(&app, bytes, "mp4").await?;
@@ -141,6 +144,7 @@ pub async fn trim_and_upload(
 
 #[tauri::command]
 pub fn start_recording_command(
+    app: AppHandle,
     state: State<RecordingState>,
     region: Option<CaptureRegion>,
     mic_enabled: bool,
@@ -149,9 +153,33 @@ pub fn start_recording_command(
     if guard.is_some() {
         return Err("a recording is already in progress".to_string());
     }
-    let output_path = std::env::temp_dir().join(format!("pxl-recording-{}.mp4", std::process::id()));
-    let child = recording::start_recording(region, mic_enabled, &output_path)?;
+    // A random suffix, not the process id — the pid is constant for the
+    // whole session, so a second recording would otherwise reuse the exact
+    // same filename as the first (which is deliberately left on disk after
+    // upload, for Reopen Last Capture). ffmpeg has no `-y` overwrite flag
+    // here and its stdin is piped (non-interactive), so writing to an
+    // existing path makes it refuse and exit almost immediately — which the
+    // crash monitor then (correctly, but misleadingly) reports as a crash.
+    let output_path =
+        std::env::temp_dir().join(format!("pxl-recording-{}.mp4", nanoid::nanoid!(8)));
+    let child = match recording::start_recording(region, mic_enabled, &output_path) {
+        Ok(child) => child,
+        Err(e) => {
+            crate::notify_capture_failed(&app, &format!("failed to start recording: {e}"));
+            return Err(e);
+        }
+    };
     *guard = Some((child, output_path.clone()));
+    drop(guard);
+    crate::set_recording_tray_state(&app, true);
+    if let Some(region) = region {
+        crate::show_recording_controls(&app, region);
+    }
+    let handle_monitor = app.clone();
+    let monitor_path = output_path.clone();
+    std::thread::spawn(move || {
+        crate::monitor_recording_for_crash(&handle_monitor, monitor_path);
+    });
     Ok(output_path.to_string_lossy().to_string())
 }
 
@@ -167,4 +195,45 @@ pub fn reopen_last_capture(app: AppHandle) -> Result<(), String> {
     let win = app.get_webview_window("editor").ok_or("editor window missing")?;
     win.show().map_err(|e| e.to_string())?;
     win.set_focus().map_err(|e| e.to_string())
+}
+
+// Reads a recording/trimmed video file's bytes so the frontend can build a
+// `blob:` URL for the `<video>` preview. This deliberately avoids Tauri's
+// `asset://` protocol + `convertFileSrc` — in dev mode the app is served
+// from a plain `http://localhost:1420` origin, and WebKit refuses to load a
+// custom-scheme resource from that origin ("Unsafe attempt to load URL"),
+// even with the asset protocol's scope correctly configured. `blob:` URLs
+// have no such restriction and work identically in dev and production.
+#[tauri::command]
+pub fn read_video_base64(path: String) -> Result<String, String> {
+    use base64::Engine;
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
+}
+
+#[derive(serde::Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum LastCapturePayload {
+    Image { png_base64: String },
+    Video { path: String },
+}
+
+// The editor window is created once and never destroyed (hidden on close),
+// so its "editor-load-image"/"editor-load-video" listeners are normally
+// live well before any capture happens. As a fallback for the case where the
+// editor's very first show races its own listener registration, the editor
+// calls this once on mount to pull whatever was last captured, rather than
+// relying solely on the one-shot emit.
+#[tauri::command]
+pub fn get_last_capture(app: AppHandle) -> Option<LastCapturePayload> {
+    let state = app.state::<crate::LastCaptureState>();
+    let guard = state.0.lock().unwrap();
+    guard.as_ref().map(|c| match c {
+        crate::LastCapture::Image { png_base64 } => {
+            LastCapturePayload::Image { png_base64: png_base64.clone() }
+        }
+        crate::LastCapture::Video { path } => {
+            LastCapturePayload::Video { path: path.to_string_lossy().to_string() }
+        }
+    })
 }

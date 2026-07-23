@@ -2,13 +2,14 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main", "editor", "overlay", "settings"],
+  "windows": ["main", "editor", "overlay", "settings", "recording-controls"],
   "permissions": [
     "core:default",
     "opener:default",
     "notification:default",
     "clipboard-manager:default",
     "clipboard-manager:allow-write-text",
-    "core:window:allow-hide"
+    "core:window:allow-hide",
+    "core:window:allow-set-ignore-cursor-events"
   ]
 }

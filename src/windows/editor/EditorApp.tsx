@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
@@ -8,10 +7,25 @@ import type Konva from "konva";
 import AnnotationCanvas from "./AnnotationCanvas";
 import Toolbar from "./Toolbar";
 import { exportStageToBytes } from "./export";
-import { uploadFile, trimAndUpload } from "../../lib/api";
+import { uploadFile, trimAndUpload, getLastCapture, readVideoBase64 } from "../../lib/api";
 import { applyCrop, initialState, setTool, type EditorState } from "./toolState";
 import VideoTrimmer from "./VideoTrimmer";
 import { initialTrimState, type TrimState } from "./trimState";
+
+// Tauri's `asset://` protocol + `convertFileSrc` gets rejected by WebKit
+// with "Unsafe attempt to load URL" when the app is served from a plain
+// `http://localhost:1420` origin (as it is in `tauri dev`) — a custom-scheme
+// resource load from a non-privileged origin. `blob:` URLs have no such
+// restriction and work identically in dev and production, so the video's
+// bytes are fetched over IPC and turned into one locally instead.
+function base64ToBlobUrl(base64: string, mimeType: string): string {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return URL.createObjectURL(new Blob([bytes], { type: mimeType }));
+}
 
 export default function EditorApp() {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
@@ -25,6 +39,18 @@ export default function EditorApp() {
   const [error, setError] = useState<string | null>(null);
   const [displayScale, setDisplayScale] = useState(1);
   const stageRef = useRef<Konva.Stage>(null);
+  const videoObjectUrlRef = useRef<string | null>(null);
+
+  const loadVideoFromPath = useCallback((path: string) => {
+    readVideoBase64(path)
+      .then((base64) => {
+        const url = base64ToBlobUrl(base64, "video/mp4");
+        if (videoObjectUrlRef.current) URL.revokeObjectURL(videoObjectUrlRef.current);
+        videoObjectUrlRef.current = url;
+        setVideoSrc(url);
+      })
+      .catch((e) => console.error("failed to load video", e));
+  }, []);
 
   useEffect(() => {
     const unlisten = listen<string>("editor-load-image", (event) => {
@@ -40,14 +66,40 @@ export default function EditorApp() {
   useEffect(() => {
     const unlisten = listen<string>("editor-load-video", (event) => {
       setVideoPath(event.payload);
-      setVideoSrc(convertFileSrc(event.payload));
       setImageSrc(null);
       setTrim(initialTrimState(0));
+      loadVideoFromPath(event.payload);
     });
     return () => {
       unlisten.then((f) => f());
     };
-  }, []);
+  }, [loadVideoFromPath]);
+
+  // The editor window is created once at startup and never destroyed, so
+  // its listeners above are normally live long before any capture happens.
+  // As a fallback for the one case where that isn't guaranteed — the very
+  // first capture of a session racing this window's own initial mount —
+  // pull whatever was last captured once on mount instead of relying solely
+  // on the one-shot "editor-load-*" event having a listener ready in time.
+  // The `prev ?? ...` guard on imageSrc/videoPath makes this a no-op if a
+  // live event already won; videoPath (not videoSrc) is the guard for video
+  // since videoSrc is only set asynchronously by loadVideoFromPath.
+  useEffect(() => {
+    getLastCapture()
+      .then((capture) => {
+        if (!capture) return;
+        if (capture.kind === "image") {
+          setImageSrc((prev) => prev ?? `data:image/png;base64,${capture.pngBase64}`);
+        } else {
+          setVideoPath((prev) => {
+            if (prev) return prev;
+            loadVideoFromPath(capture.path);
+            return capture.path;
+          });
+        }
+      })
+      .catch((e) => console.error("failed to load last capture", e));
+  }, [loadVideoFromPath]);
 
   async function handleTrimAndUpload() {
     if (!videoPath) return;

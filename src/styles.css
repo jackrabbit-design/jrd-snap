@@ -345,6 +345,28 @@ textarea {
   white-space: nowrap;
 }
 
+/* Marks the actively-recording region. Unlike .overlay-selection, this has
+   no dimming box-shadow — the rest of the screen must stay fully usable
+   while recording, since the window is click-through everywhere except the
+   Stop Recording button below it. */
+.recording-border {
+  position: absolute;
+  border: 2px solid var(--danger);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
+/* Recording controls window (small, always-interactive, floats below the
+   recording border) */
+
+.recording-controls-root {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+}
+
 /* Video trim mode (editor window) */
 
 .video-trimmer {
@@ -362,10 +384,78 @@ textarea {
   border-radius: var(--radius-sm);
 }
 
-.trim-scrubber {
+/* Dual-range trim slider: two native range inputs stacked on the same
+   track. Each input's own track is made invisible/non-interactive
+   (background: transparent + pointer-events: none) so only its thumb is
+   clickable — this lets clicks land on whichever thumb is under the
+   cursor instead of always hitting the topmost input's full-width track. */
+.dual-range {
+  position: relative;
+  height: 20px;
   display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  align-items: center;
+}
+
+.dual-range-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.dual-range-fill {
+  position: absolute;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.dual-range-input {
+  position: absolute;
+  left: 0;
+  right: 0;
+  width: 100%;
+  margin: 0;
+  background: transparent;
+  pointer-events: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.dual-range-input::-webkit-slider-runnable-track {
+  -webkit-appearance: none;
+  background: transparent;
+}
+
+.dual-range-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  pointer-events: auto;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-elevated);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+}
+
+.dual-range-input::-moz-range-track {
+  background: transparent;
+  border: none;
+}
+
+.dual-range-input::-moz-range-thumb {
+  pointer-events: auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-elevated);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
 }
 
 .trim-labels {

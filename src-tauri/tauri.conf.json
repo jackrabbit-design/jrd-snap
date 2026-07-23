@@ -45,14 +45,23 @@
         "width": 900,
         "height": 700,
         "visible": false
+      },
+      {
+        "label": "recording-controls",
+        "title": "pxl Recording Controls",
+        "url": "index.html#/recording-controls",
+        "width": 180,
+        "height": 56,
+        "resizable": false,
+        "visible": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true
       }
     ],
     "security": {
-      "csp": null,
-      "assetProtocol": {
-        "enable": true,
-        "scope": ["$TEMP/pxl-recording-*.mp4", "$TEMP/pxl-trimmed-*.mp4"]
-      }
+      "csp": null
     }
   },
   "bundle": {
@@ -61,9 +70,7 @@
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
+      "icons/128x128@2x.png"
     ]
   }
 }
