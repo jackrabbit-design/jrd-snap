@@ -79,6 +79,36 @@ pub(crate) fn set_recording_tray_state(app: &tauri::AppHandle, recording: bool) 
     let _ = items.record_full.set_enabled(!recording);
 }
 
+/// Polls the recording's ffmpeg process every 500ms. If it's still the
+/// active recording (nobody has called stop/discard) and it exits on its
+/// own, that's a crash: notify, reset the tray, and discard the resulting
+/// file (it's necessarily incomplete/corrupt, so no editor should open for
+/// it, per the design spec's crash-handling requirement).
+pub(crate) fn monitor_recording_for_crash(app: &tauri::AppHandle, expected_path: std::path::PathBuf) {
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let state = app.state::<recording::RecordingState>();
+        let mut guard = state.0.lock().unwrap();
+        match guard.as_mut() {
+            None => return, // stopped or discarded elsewhere — normal exit, nothing to do
+            Some((_child, path)) if *path != expected_path => return, // superseded by a different recording
+            Some((child, _path)) => match child.as_inner_mut().try_wait() {
+                Ok(None) => continue, // still running, poll again
+                Ok(Some(_)) | Err(_) => {
+                    // Process exited on its own (or we can't even check) without
+                    // anyone calling stop/discard — that's a crash.
+                    let _ = guard.take();
+                    drop(guard);
+                    let _ = std::fs::remove_file(&expected_path);
+                    notify_capture_failed(app, "recording process exited unexpectedly");
+                    set_recording_tray_state(app, false);
+                    return;
+                }
+            },
+        }
+    }
+}
+
 pub enum LastCapture {
     Image { png_base64: String },
     Video { path: std::path::PathBuf },
@@ -263,8 +293,13 @@ pub fn run() {
                                 &output_path,
                             ) {
                                 Ok(child) => {
-                                    *state.0.lock().unwrap() = Some((child, output_path));
+                                    *state.0.lock().unwrap() = Some((child, output_path.clone()));
                                     set_recording_tray_state(&handle6, true);
+                                    let handle_monitor = handle6.clone();
+                                    let monitor_path = output_path.clone();
+                                    std::thread::spawn(move || {
+                                        monitor_recording_for_crash(&handle_monitor, monitor_path);
+                                    });
                                 }
                                 Err(e) => notify_capture_failed(
                                     &handle6,
