@@ -158,3 +158,10 @@ pub fn stop_recording_command(state: State<RecordingState>) -> Result<(), String
     let (child, _path) = guard.take().ok_or("no recording in progress")?;
     recording::stop_recording(child)
 }
+
+#[tauri::command]
+pub fn reopen_last_capture(app: AppHandle) -> Result<(), String> {
+    let win = app.get_webview_window("editor").ok_or("editor window missing")?;
+    win.show().map_err(|e| e.to_string())?;
+    win.set_focus().map_err(|e| e.to_string())
+}

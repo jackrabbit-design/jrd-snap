@@ -70,7 +70,28 @@ pub(crate) fn set_recording_tray_state(app: &tauri::AppHandle, recording: bool) 
     let _ = items.record_full.set_enabled(!recording);
 }
 
+pub enum LastCapture {
+    Image { png_base64: String },
+    Video { path: std::path::PathBuf },
+}
+
+pub struct LastCaptureState(pub std::sync::Mutex<Option<LastCapture>>);
+
+impl Default for LastCaptureState {
+    fn default() -> Self {
+        LastCaptureState(std::sync::Mutex::new(None))
+    }
+}
+
+pub(crate) fn set_reopen_enabled(app: &tauri::AppHandle, enabled: bool) {
+    let items = app.state::<crate::tray::TrayMenuItems>();
+    let _ = items.reopen_last_capture.set_enabled(enabled);
+}
+
 pub(crate) fn open_editor_with_video(app: &tauri::AppHandle, video_path: &std::path::Path) {
+    let state = app.state::<LastCaptureState>();
+    *state.0.lock().unwrap() = Some(LastCapture::Video { path: video_path.to_path_buf() });
+    set_reopen_enabled(app, true);
     if let Some(win) = app.get_webview_window("editor") {
         if let Err(e) = win.show() {
             eprintln!("failed to show editor window: {e}");
@@ -89,6 +110,9 @@ pub(crate) fn open_editor_with_video(app: &tauri::AppHandle, video_path: &std::p
 pub(crate) fn open_editor_with_png(app: &tauri::AppHandle, png_bytes: Vec<u8>) {
     use base64::Engine;
     let b64 = base64::engine::general_purpose::STANDARD.encode(&png_bytes);
+    let state = app.state::<LastCaptureState>();
+    *state.0.lock().unwrap() = Some(LastCapture::Image { png_base64: b64.clone() });
+    set_reopen_enabled(app, true);
     if let Some(win) = app.get_webview_window("editor") {
         if let Err(e) = win.show() {
             eprintln!("failed to show editor window: {e}");
@@ -128,8 +152,10 @@ pub fn run() {
             commands::trim_and_upload,
             commands::start_recording_command,
             commands::stop_recording_command,
+            commands::reopen_last_capture,
         ])
         .manage(recording::RecordingState::default())
+        .manage(LastCaptureState::default())
         .setup(|app| {
             tray::build_tray(app.handle())?;
 
