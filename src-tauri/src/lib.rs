@@ -282,11 +282,9 @@ pub fn run() {
                 let state = handle7.state::<recording::RecordingState>();
                 let entry = state.0.lock().unwrap().take();
                 if let Some((child, output_path)) = entry {
+                    set_recording_tray_state(&handle7, false);
                     match recording::stop_recording(child) {
-                        Ok(()) => {
-                            set_recording_tray_state(&handle7, false);
-                            open_editor_with_video(&handle7, &output_path);
-                        }
+                        Ok(()) => open_editor_with_video(&handle7, &output_path),
                         Err(e) => notify_capture_failed(
                             &handle7,
                             &format!("failed to stop recording: {e}"),

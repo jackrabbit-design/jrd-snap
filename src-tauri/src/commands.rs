@@ -136,7 +136,6 @@ pub async fn trim_and_upload(
     let bytes = std::fs::read(&output).map_err(|e| e.to_string())?;
     let url = upload_bytes(&app, bytes, "mp4").await?;
     let _ = std::fs::remove_file(&output);
-    let _ = std::fs::remove_file(&input);
     Ok(url)
 }
 

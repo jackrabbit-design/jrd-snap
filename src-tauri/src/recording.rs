@@ -1,6 +1,7 @@
 use ffmpeg_sidecar::child::FfmpegChild;
 use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::download::auto_download;
+use ffmpeg_sidecar::paths::ffmpeg_path;
 use ffmpeg_sidecar::paths::sidecar_dir;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -68,6 +69,11 @@ pub fn build_capture_args(
             // `ffmpeg -list_devices true -f dshow -i dummy`, which varies
             // by machine. Task 3's caller must discover and substitute the
             // real default microphone's name.
+            // KNOWN UNRESOLVED GAP: unlike the macOS branch, no runtime
+            // discovery has been implemented for Windows dshow device names
+            // (no Windows machine was available to test against). This
+            // placeholder is very likely wrong on any real machine; see the
+            // `eprintln!` warning in `start_recording` below.
             args.push("audio=Microphone".into());
         }
     }
@@ -122,9 +128,16 @@ fn parse_screen_device_index(stderr_text: &str) -> Result<String, String> {
 /// stderr. This command always exits non-zero (it errors out after printing
 /// the device list because "" is not a valid input), so the exit status is
 /// deliberately ignored here — only stderr's content matters.
+///
+/// This must invoke the ffmpeg_sidecar-managed binary (via `ffmpeg_path()`),
+/// not whatever "ffmpeg" resolves to on PATH: `start_recording` records using
+/// the sidecar binary via `FfmpegCommand::new()`, and on a clean install with
+/// no system-wide ffmpeg there may be nothing on PATH at all, which would
+/// silently fail discovery and fall back to the hardcoded (likely wrong)
+/// index below.
 #[cfg(target_os = "macos")]
 pub fn find_macos_screen_device_index() -> Result<String, String> {
-    let output = std::process::Command::new("ffmpeg")
+    let output = std::process::Command::new(ffmpeg_path())
         .args(["-f", "avfoundation", "-list_devices", "true", "-i", ""])
         .output()
         .map_err(|e| e.to_string())?;
@@ -158,6 +171,15 @@ pub fn start_recording(
     };
     #[cfg(not(target_os = "macos"))]
     let screen_device_index = "1".to_string();
+
+    #[cfg(target_os = "windows")]
+    if mic_enabled {
+        eprintln!(
+            "warning: Windows dshow microphone device name is a hardcoded placeholder \
+             (\"audio=Microphone\"); real device discovery has not been implemented for \
+             Windows yet, so this recording's audio input is likely wrong on this machine"
+        );
+    }
 
     let args = build_capture_args(region, mic_enabled, output_path, &screen_device_index);
     FfmpegCommand::new()
