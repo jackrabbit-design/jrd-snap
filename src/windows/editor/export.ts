@@ -15,6 +15,14 @@ export function dataUrlToBytes(dataUrl: string): Uint8Array {
   return bytes;
 }
 
+export function bytesToDataUrl(bytes: Uint8Array, mimeType: string): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return `data:${mimeType};base64,${btoa(binary)}`;
+}
+
 // pixelRatio compensates for the Stage possibly being displayed smaller than
 // the source image (fit-to-panel scaling, like `object-fit: contain`) —
 // Konva's toDataURL exports at the Stage's current on-screen size by

@@ -189,6 +189,45 @@ pub(crate) fn open_editor_with_png(app: &tauri::AppHandle, png_bytes: Vec<u8>) {
     }
 }
 
+const CAPTURE_HISTORY_LIMIT: usize = 6;
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptureHistoryEntry {
+    pub id: String,
+    pub kind: String,
+    pub url: String,
+    pub thumbnail: String,
+    pub timestamp_ms: u64,
+}
+
+pub struct CaptureHistoryState(pub std::sync::Mutex<std::collections::VecDeque<CaptureHistoryEntry>>);
+
+impl Default for CaptureHistoryState {
+    fn default() -> Self {
+        CaptureHistoryState(std::sync::Mutex::new(std::collections::VecDeque::new()))
+    }
+}
+
+// Session-only, like LastCaptureState — never persisted to disk, matching
+// the app's existing privacy stance. The frontend generates the thumbnail
+// (client-side, from whatever it already has in memory for the upload) and
+// hands it here alongside the resulting URL; this just keeps the bounded
+// most-recent-6 list and notifies the history window if it's open.
+pub(crate) fn record_capture_history(app: &tauri::AppHandle, kind: String, url: String, thumbnail: String) {
+    let timestamp_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let state = app.state::<CaptureHistoryState>();
+    let mut history = state.0.lock().unwrap();
+    history.push_front(CaptureHistoryEntry { id: nanoid::nanoid!(8), kind, url, thumbnail, timestamp_ms });
+    history.truncate(CAPTURE_HISTORY_LIMIT);
+    let snapshot: Vec<CaptureHistoryEntry> = history.iter().cloned().collect();
+    drop(history);
+    let _ = app.emit_to("history", "capture-history-updated", snapshot);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -216,9 +255,12 @@ pub fn run() {
             commands::reopen_last_capture,
             commands::get_last_capture,
             commands::read_video_base64,
+            commands::record_capture_history,
+            commands::get_capture_history,
         ])
         .manage(recording::RecordingState::default())
         .manage(LastCaptureState::default())
+        .manage(CaptureHistoryState::default())
         .setup(|app| {
             tray::build_tray(app.handle())?;
 
@@ -240,7 +282,7 @@ pub fn run() {
             // Closing the settings/editor windows via the native close button
             // would otherwise destroy them, so the next tray click/capture
             // could never find or re-show them. Hide instead.
-            for label in ["settings", "editor"] {
+            for label in ["settings", "editor", "history"] {
                 if let Some(win) = app.get_webview_window(label) {
                     let win_to_hide = win.clone();
                     win.on_window_event(move |event| {

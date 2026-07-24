@@ -82,3 +82,19 @@ export function getLastCapture(): Promise<LastCapture | null> {
 export function readVideoBase64(path: string): Promise<string> {
   return invoke("read_video_base64", { path });
 }
+
+export interface CaptureHistoryEntry {
+  id: string;
+  kind: "image" | "video";
+  url: string;
+  thumbnail: string;
+  timestampMs: number;
+}
+
+export function recordCaptureHistory(kind: "image" | "video", url: string, thumbnail: string): Promise<void> {
+  return invoke("record_capture_history", { kind, url, thumbnail });
+}
+
+export function getCaptureHistory(): Promise<CaptureHistoryEntry[]> {
+  return invoke("get_capture_history");
+}

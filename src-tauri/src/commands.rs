@@ -237,3 +237,15 @@ pub fn get_last_capture(app: AppHandle) -> Option<LastCapturePayload> {
         }
     })
 }
+
+#[tauri::command]
+pub fn record_capture_history(app: AppHandle, kind: String, url: String, thumbnail: String) {
+    crate::record_capture_history(&app, kind, url, thumbnail);
+}
+
+#[tauri::command]
+pub fn get_capture_history(app: AppHandle) -> Vec<crate::CaptureHistoryEntry> {
+    let state = app.state::<crate::CaptureHistoryState>();
+    let history = state.0.lock().unwrap();
+    history.iter().cloned().collect()
+}

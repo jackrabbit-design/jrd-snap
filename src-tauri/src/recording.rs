@@ -46,6 +46,12 @@ pub fn build_capture_args(
         let audio_device = if mic_enabled { "0" } else { "none" };
         args.push("-f".into());
         args.push("avfoundation".into());
+        // avfoundation does NOT draw the OS mouse cursor into captured
+        // frames by default — this must be requested explicitly, and (like
+        // -framerate) has to come before -i since it's an avfoundation
+        // input option.
+        args.push("-capture_cursor".into());
+        args.push("1".into());
         args.push("-framerate".into());
         args.push("30".into());
         args.push("-i".into());
@@ -56,6 +62,11 @@ pub fn build_capture_args(
     {
         args.push("-f".into());
         args.push("gdigrab".into());
+        // Explicit, though gdigrab already defaults to drawing the cursor —
+        // stated outright so this doesn't silently regress if that default
+        // ever changes.
+        args.push("-draw_mouse".into());
+        args.push("1".into());
         args.push("-framerate".into());
         args.push("30".into());
         args.push("-i".into());

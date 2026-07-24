@@ -16,6 +16,7 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let record_area = MenuItem::with_id(app, "record_area", "Record Area", true, None::<&str>)?;
     let stop_recording = MenuItem::with_id(app, "stop_recording", "Stop Recording", false, None::<&str>)?;
     let reopen_last_capture = MenuItem::with_id(app, "reopen_last_capture", "Reopen Last Capture", false, None::<&str>)?;
+    let recent_captures = MenuItem::with_id(app, "recent_captures", "Recent Captures", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "open_settings", "Settings", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
@@ -27,6 +28,7 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             &record_area,
             &stop_recording,
             &reopen_last_capture,
+            &recent_captures,
             &settings,
             &quit,
         ],
@@ -65,6 +67,12 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             "reopen_last_capture" => {
                 if let Err(e) = crate::commands::reopen_last_capture(app.clone()) {
                     eprintln!("reopen_last_capture failed: {e}");
+                }
+            }
+            "recent_captures" => {
+                if let Some(win) = app.get_webview_window("history") {
+                    let _ = win.show();
+                    let _ = win.set_focus();
                 }
             }
             "open_settings" => {

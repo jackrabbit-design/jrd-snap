@@ -6,10 +6,10 @@ import { sendNotification } from "@tauri-apps/plugin-notification";
 import type Konva from "konva";
 import AnnotationCanvas from "./AnnotationCanvas";
 import Toolbar from "./Toolbar";
-import { exportStageToBytes } from "./export";
-import { uploadFile, trimAndUpload, getLastCapture, readVideoBase64 } from "../../lib/api";
+import { bytesToDataUrl, exportStageToBytes } from "./export";
+import { uploadFile, trimAndUpload, getLastCapture, readVideoBase64, recordCaptureHistory } from "../../lib/api";
 import { applyCrop, initialState, setTool, type EditorState } from "./toolState";
-import VideoTrimmer from "./VideoTrimmer";
+import VideoTrimmer, { type VideoTrimmerHandle } from "./VideoTrimmer";
 import { initialTrimState, type TrimState } from "./trimState";
 
 // Tauri's `asset://` protocol + `convertFileSrc` gets rejected by WebKit
@@ -39,6 +39,7 @@ export default function EditorApp() {
   const [error, setError] = useState<string | null>(null);
   const [displayScale, setDisplayScale] = useState(1);
   const stageRef = useRef<Konva.Stage>(null);
+  const trimmerRef = useRef<VideoTrimmerHandle>(null);
   const videoObjectUrlRef = useRef<string | null>(null);
 
   const loadVideoFromPath = useCallback((path: string) => {
@@ -107,6 +108,12 @@ export default function EditorApp() {
     setError(null);
     try {
       const url = await trimAndUpload(videoPath, trim.inPoint, trim.outPoint);
+      try {
+        const thumbnail = await trimmerRef.current?.captureThumbnail(trim.inPoint);
+        if (thumbnail) await recordCaptureHistory("video", url, thumbnail);
+      } catch (e) {
+        console.error("failed to record capture history", e);
+      }
       await writeText(url);
       await sendNotification({ title: "pxl", body: `Uploaded — link copied to clipboard\n${url}` });
       await getCurrentWindow().hide();
@@ -156,6 +163,11 @@ export default function EditorApp() {
     try {
       const bytes = exportStageToBytes(stageRef.current, 1 / displayScale);
       const url = await uploadFile(bytes, "png");
+      try {
+        await recordCaptureHistory("image", url, bytesToDataUrl(bytes, "image/png"));
+      } catch (e) {
+        console.error("failed to record capture history", e);
+      }
       await writeText(url);
       await sendNotification({ title: "pxl", body: `Uploaded — link copied to clipboard\n${url}` });
       await getCurrentWindow().hide();
@@ -173,7 +185,7 @@ export default function EditorApp() {
   if (videoSrc) {
     return (
       <div className="editor-page">
-        <div className="editor-actions">
+        <div className="editor-header-row editor-actions">
           <button type="button" className="button button-primary" onClick={handleTrimAndUpload} disabled={uploading}>
             {uploading ? "Uploading…" : "Save & Upload"}
           </button>
@@ -186,7 +198,7 @@ export default function EditorApp() {
             </button>
           </div>
         )}
-        <VideoTrimmer videoSrc={videoSrc} trim={trim} onTrimChange={setTrim} />
+        <VideoTrimmer ref={trimmerRef} videoSrc={videoSrc} trim={trim} onTrimChange={setTrim} />
       </div>
     );
   }
@@ -197,23 +209,25 @@ export default function EditorApp() {
 
   return (
     <div className="editor-page">
-      <Toolbar
-        tool={state.tool}
-        color={color}
-        strokeWidth={strokeWidth}
-        onToolChange={(t) => setState(setTool(state, t))}
-        onColorChange={setColor}
-        onStrokeWidthChange={setStrokeWidth}
-      />
-      <div className="editor-actions">
-        <button type="button" className="button button-primary" onClick={handleSaveAndUpload} disabled={uploading}>
-          {uploading ? "Uploading…" : "Save & Upload"}
-        </button>
-        {state.shapes.some((s) => s.type === "crop") && (
-          <button type="button" className="button" onClick={handleApplyCrop}>
-            Apply Crop
+      <div className="editor-header-row editor-toolbar-row">
+        <Toolbar
+          tool={state.tool}
+          color={color}
+          strokeWidth={strokeWidth}
+          onToolChange={(t) => setState(setTool(state, t))}
+          onColorChange={setColor}
+          onStrokeWidthChange={setStrokeWidth}
+        />
+        <div className="editor-actions">
+          {state.shapes.some((s) => s.type === "crop") && (
+            <button type="button" className="button" onClick={handleApplyCrop}>
+              Apply Crop
+            </button>
+          )}
+          <button type="button" className="button button-primary" onClick={handleSaveAndUpload} disabled={uploading}>
+            {uploading ? "Uploading…" : "Save & Upload"}
           </button>
-        )}
+        </div>
       </div>
       {error && (
         <div className="error-banner">

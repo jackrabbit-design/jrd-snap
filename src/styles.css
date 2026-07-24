@@ -214,6 +214,88 @@ textarea {
   gap: var(--space-3);
 }
 
+/* Recent Captures window */
+
+.history-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg);
+}
+
+.history-header {
+  padding: var(--space-4) var(--space-4) var(--space-2);
+}
+
+.history-header h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.history-empty {
+  padding: var(--space-4);
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+
+.history-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4) var(--space-4);
+}
+
+.history-cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.history-thumbnail-wrap {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+
+.history-thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.history-video-badge {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  font-size: 11px;
+}
+
+.history-cell-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.history-timestamp {
+  font-size: 11px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+
 /* Editor window */
 
 .editor-page {
@@ -230,17 +312,30 @@ textarea {
   background: var(--bg);
 }
 
+.editor-header-row {
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+}
+
+.editor-toolbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
 .toolbar {
   display: flex;
   align-items: center;
   gap: var(--space-1);
   padding: var(--space-2);
-  background: var(--bg-elevated);
-  border-bottom: 1px solid var(--border);
 }
 
 .tool-button {
-  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -284,8 +379,6 @@ textarea {
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  background: var(--bg-elevated);
-  border-bottom: 1px solid var(--border);
 }
 
 .editor-canvas-container {
@@ -349,10 +442,15 @@ textarea {
    no dimming box-shadow — the rest of the screen must stay fully usable
    while recording, since the window is click-through everywhere except the
    Stop Recording button below it. */
+/* `outline` (not `border`) — a border straddles the element's exact edge,
+   which here is the exact pixel rectangle ffmpeg crops for the recording,
+   so half its width would get captured into the video. `outline` (with a
+   few pixels of offset) is guaranteed to render entirely outside that
+   rectangle instead, so this indicator never bleeds into the recording. */
 .recording-border {
   position: absolute;
-  border: 2px solid var(--danger);
-  border-radius: 2px;
+  outline: 2px solid var(--danger);
+  outline-offset: 3px;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
 }
 

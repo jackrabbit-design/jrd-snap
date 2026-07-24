@@ -58,6 +58,14 @@
         "transparent": true,
         "alwaysOnTop": true,
         "skipTaskbar": true
+      },
+      {
+        "label": "history",
+        "title": "pxl Recent Captures",
+        "url": "index.html#/history",
+        "width": 640,
+        "height": 460,
+        "visible": false
       }
     ],
     "security": {

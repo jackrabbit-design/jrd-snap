@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import type { TrimState } from "./trimState";
 import { setInPoint, setOutPoint } from "./trimState";
 
@@ -8,7 +8,18 @@ interface Props {
   onTrimChange: (t: TrimState) => void;
 }
 
-export default function VideoTrimmer({ videoSrc, trim, onTrimChange }: Props) {
+export interface VideoTrimmerHandle {
+  // Seeks to `time`, waits for the frame to actually load, and returns a PNG
+  // data URL of it — used to build a representative thumbnail right after a
+  // successful upload (seeking to the trim's in-point, not whatever frame
+  // happens to be showing, so the thumbnail reflects what was actually saved).
+  captureThumbnail(time: number): Promise<string>;
+}
+
+const VideoTrimmer = forwardRef<VideoTrimmerHandle, Props>(function VideoTrimmer(
+  { videoSrc, trim, onTrimChange },
+  ref,
+) {
   const videoRef = useRef<HTMLVideoElement>(null);
   // Tracks the previous playback-boundary listener so releasing one slider
   // right after another can't leave two `timeupdate` listeners racing to
@@ -56,6 +67,33 @@ export default function VideoTrimmer({ videoSrc, trim, onTrimChange }: Props) {
       stopAtCleanupRef.current?.();
     };
   }, []);
+
+  useImperativeHandle(ref, () => ({
+    captureThumbnail(time: number) {
+      return new Promise<string>((resolve, reject) => {
+        const video = videoRef.current;
+        if (!video) {
+          reject(new Error("video not ready"));
+          return;
+        }
+        const onSeeked = () => {
+          video.removeEventListener("seeked", onSeeked);
+          const canvas = document.createElement("canvas");
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            reject(new Error("no 2d canvas context"));
+            return;
+          }
+          ctx.drawImage(video, 0, 0);
+          resolve(canvas.toDataURL("image/png"));
+        };
+        video.addEventListener("seeked", onSeeked);
+        video.currentTime = time;
+      });
+    },
+  }));
 
   return (
     <div className="video-trimmer">
@@ -107,4 +145,6 @@ export default function VideoTrimmer({ videoSrc, trim, onTrimChange }: Props) {
       </div>
     </div>
   );
-}
+});
+
+export default VideoTrimmer;
