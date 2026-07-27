@@ -37,27 +37,44 @@ export default function OverlayApp() {
   const [recordRegion, setRecordRegion] = useState<CaptureRect | null>(null);
   const [recordDisplayRegion, setRecordDisplayRegion] = useState<DisplayRect | null>(null);
 
-  // Some WebKit/WKWebView builds don't reliably propagate a CSS `cursor`
-  // set only on a child element over a transparent, borderless window —
-  // force it at the document root too so the crosshair actually shows.
+  // WKWebView doesn't reliably re-sync the native cursor just because a CSS
+  // `cursor` property's *value* is already "crosshair" — a same-value
+  // reassignment is a no-op to the DOM, so it never re-triggers WebKit's
+  // cursor update. This matters a lot here because the overlay window is
+  // hidden/shown (and repositioned via resize_overlay_to_monitor) for every
+  // single capture rather than recreated, so a plain one-time assignment on
+  // mount only ever has a chance to "take" the very first time the overlay
+  // is ever shown in a session — every later show relies on whatever native
+  // cursor state macOS happened to leave behind. Forcing a real change
+  // (clear, then reapply crosshair a frame later) makes WebKit actually
+  // re-evaluate it every time, not just once.
+  function forceCrosshairCursor() {
+    document.documentElement.style.cursor = "default";
+    document.body.style.cursor = "default";
+    requestAnimationFrame(() => {
+      document.documentElement.style.cursor = "crosshair";
+      document.body.style.cursor = "crosshair";
+    });
+  }
+
   useEffect(() => {
-    const previous = document.documentElement.style.cursor;
-    document.documentElement.style.cursor = "crosshair";
-    document.body.style.cursor = "crosshair";
-    return () => {
-      document.documentElement.style.cursor = previous;
-      document.body.style.cursor = "";
-    };
+    forceCrosshairCursor();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- forceCrosshairCursor
+    // is a plain function redefined each render with no reactive dependencies
+    // of its own; listing it would just make this effect (mount-only, on
+    // purpose) re-run every render instead.
   }, []);
 
   useEffect(() => {
     const unlisten = listen<{ purpose: "screenshot" | "record" }>("overlay-mode", (event) => {
       setPurpose(event.payload.purpose);
       setPhase("select");
+      forceCrosshairCursor();
     });
     return () => {
       unlisten.then((f) => f());
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see above
   }, []);
 
   // Fires whenever a recording actually stops, regardless of trigger (this
@@ -99,7 +116,10 @@ export default function OverlayApp() {
     setStart(null);
     setCurrent(null);
     if (width < 2 || height < 2) {
-      if (purpose === "screenshot") await invoke("hide_overlay");
+      if (purpose === "screenshot") {
+        await invoke("hide_overlay");
+        await invoke("reset_capture_icon");
+      }
       return;
     }
     // Convert from logical/CSS pixels (browser mouse coordinates) to physical
@@ -136,6 +156,7 @@ export default function OverlayApp() {
       setRecordRegion(null);
       setRecordDisplayRegion(null);
       await invoke("hide_overlay");
+      await invoke("reset_capture_icon");
     }
   }
 
@@ -161,6 +182,7 @@ export default function OverlayApp() {
     setRecordRegion(null);
     setRecordDisplayRegion(null);
     await invoke("hide_overlay");
+    await invoke("reset_capture_icon");
   }
 
   const rect =

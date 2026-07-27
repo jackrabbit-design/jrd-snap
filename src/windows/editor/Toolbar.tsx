@@ -4,6 +4,7 @@ import type { ToolType } from "./toolState";
 const TOOLS: { type: ToolType; title: string }[] = [
   { type: "select", title: "Select — click a shape to select it, drag to move it, Delete/Backspace to remove it" },
   { type: "arrow", title: "Arrow (A)" },
+  { type: "line", title: "Line (L)" },
   { type: "rect", title: "Rectangle (R)" },
   { type: "ellipse", title: "Oval (O)" },
   { type: "pen", title: "Pen (P)" },
@@ -17,12 +18,25 @@ interface Props {
   tool: ToolType;
   color: string;
   strokeWidth: number;
+  showTextBackground: boolean;
+  textBackground: boolean;
   onToolChange: (t: ToolType) => void;
   onColorChange: (c: string) => void;
   onStrokeWidthChange: (w: number) => void;
+  onTextBackgroundChange: (v: boolean) => void;
 }
 
-export default function Toolbar({ tool, color, strokeWidth, onToolChange, onColorChange, onStrokeWidthChange }: Props) {
+export default function Toolbar({
+  tool,
+  color,
+  strokeWidth,
+  showTextBackground,
+  textBackground,
+  onToolChange,
+  onColorChange,
+  onStrokeWidthChange,
+  onTextBackgroundChange,
+}: Props) {
   return (
     <div className="toolbar">
       {TOOLS.map((t) => (
@@ -45,14 +59,25 @@ export default function Toolbar({ tool, color, strokeWidth, onToolChange, onColo
         onChange={(e) => onColorChange(e.target.value)}
       />
       <input
-        type="number"
-        className="input stroke-width-input"
+        type="range"
+        className="stroke-width-input"
         title="Stroke width"
         min={1}
-        max={20}
+        max={30}
         value={strokeWidth}
+        disabled={tool === "blur"}
         onChange={(e) => onStrokeWidthChange(Number(e.target.value))}
       />
+      {showTextBackground && (
+        <label className="text-background-toggle" title="Text background">
+          <input
+            type="checkbox"
+            checked={textBackground}
+            onChange={(e) => onTextBackgroundChange(e.target.checked)}
+          />
+          Background
+        </label>
+      )}
     </div>
   );
 }

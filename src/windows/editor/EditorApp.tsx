@@ -8,7 +8,7 @@ import AnnotationCanvas from "./AnnotationCanvas";
 import Toolbar from "./Toolbar";
 import { bytesToDataUrl, exportStageToBytes } from "./export";
 import { uploadFile, trimAndUpload, getLastCapture, readVideoBase64, recordCaptureHistory } from "../../lib/api";
-import { applyCrop, initialState, setTool, type EditorState } from "./toolState";
+import { applyCrop, initialState, setTool, updateShape, type EditorState } from "./toolState";
 import VideoTrimmer, { type VideoTrimmerHandle } from "./VideoTrimmer";
 import { initialTrimState, type TrimState } from "./trimState";
 
@@ -33,14 +33,26 @@ export default function EditorApp() {
   const [videoPath, setVideoPath] = useState<string | null>(null);
   const [trim, setTrim] = useState<TrimState>(initialTrimState(0));
   const [state, setState] = useState<EditorState>(initialState);
-  const [color, setColor] = useState("#ff0000");
-  const [strokeWidth, setStrokeWidth] = useState(3);
+  const [color, setColor] = useState(() => localStorage.getItem("editor-color") ?? "#ff0000");
+  const [strokeWidth, setStrokeWidth] = useState(() => Number(localStorage.getItem("editor-stroke-width")) || 3);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [displayScale, setDisplayScale] = useState(1);
   const stageRef = useRef<Konva.Stage>(null);
   const trimmerRef = useRef<VideoTrimmerHandle>(null);
   const videoObjectUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!state.selectedId) return;
+    const selected = state.shapes.find((s) => s.id === state.selectedId);
+    if (!selected) return;
+    setColor(selected.color);
+    if (selected.type === "text") {
+      setStrokeWidth((selected.fontSize - 17) / 3);
+    } else {
+      setStrokeWidth(selected.type === "highlighter" ? selected.strokeWidth / 4 : selected.strokeWidth);
+    }
+  }, [state.selectedId, state.shapes]);
 
   const loadVideoFromPath = useCallback((path: string) => {
     readVideoBase64(path)
@@ -115,13 +127,36 @@ export default function EditorApp() {
         console.error("failed to record capture history", e);
       }
       await writeText(url);
-      await sendNotification({ title: "pxl", body: `Uploaded — link copied to clipboard\n${url}` });
+      await sendNotification({ title: "Snap", body: `Uploaded — link copied to clipboard\n${url}` });
       await getCurrentWindow().hide();
     } catch (e) {
       setError(String(e));
     } finally {
       setUploading(false);
     }
+  }
+
+  function handleColorChange(next: string) {
+    setColor(next);
+    localStorage.setItem("editor-color", next);
+    if (state.selectedId) setState(updateShape(state, state.selectedId, { color: next }));
+  }
+
+  function handleStrokeWidthChange(next: number) {
+    setStrokeWidth(next);
+    localStorage.setItem("editor-stroke-width", String(next));
+    const selected = state.shapes.find((s) => s.id === state.selectedId);
+    if (selected) {
+      if (selected.type === "text") {
+        setState(updateShape(state, selected.id, { fontSize: 17 + next * 3 }));
+      } else {
+        setState(updateShape(state, selected.id, { strokeWidth: selected.type === "highlighter" ? next * 4 : next }));
+      }
+    }
+  }
+
+  function handleTextBackgroundChange(next: boolean) {
+    if (state.selectedId) setState(updateShape(state, state.selectedId, { background: next }));
   }
 
   function handleApplyCrop() {
@@ -169,7 +204,7 @@ export default function EditorApp() {
         console.error("failed to record capture history", e);
       }
       await writeText(url);
-      await sendNotification({ title: "pxl", body: `Uploaded — link copied to clipboard\n${url}` });
+      await sendNotification({ title: "Snap", body: `Uploaded — link copied to clipboard\n${url}` });
       await getCurrentWindow().hide();
     } catch (e) {
       setError(String(e));
@@ -207,6 +242,8 @@ export default function EditorApp() {
     return <div className="editor-waiting">Waiting for capture…</div>;
   }
 
+  const selectedShape = state.shapes.find((s) => s.id === state.selectedId);
+
   return (
     <div className="editor-page">
       <div className="editor-header-row editor-toolbar-row">
@@ -214,9 +251,12 @@ export default function EditorApp() {
           tool={state.tool}
           color={color}
           strokeWidth={strokeWidth}
+          showTextBackground={selectedShape?.type === "text"}
+          textBackground={selectedShape?.type === "text" ? selectedShape.background : false}
           onToolChange={(t) => setState(setTool(state, t))}
-          onColorChange={setColor}
-          onStrokeWidthChange={setStrokeWidth}
+          onColorChange={handleColorChange}
+          onStrokeWidthChange={handleStrokeWidthChange}
+          onTextBackgroundChange={handleTextBackgroundChange}
         />
         <div className="editor-actions">
           {state.shapes.some((s) => s.type === "crop") && (

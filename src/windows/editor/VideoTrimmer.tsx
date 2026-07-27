@@ -97,7 +97,7 @@ const VideoTrimmer = forwardRef<VideoTrimmerHandle, Props>(function VideoTrimmer
 
   return (
     <div className="video-trimmer">
-      <video ref={videoRef} src={videoSrc} controls onLoadedMetadata={handleLoadedMetadata} className="video-preview" />
+      <video ref={videoRef} src={videoSrc} controls onLoadedMetadata={handleLoadedMetadata} className="video-preview" disablePictureInPicture />
       <div className="dual-range">
         <div className="dual-range-track" />
         <div

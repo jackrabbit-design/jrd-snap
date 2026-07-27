@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "pxl",
+  "productName": "Snap",
   "version": "0.1.0",
-  "identifier": "com.pxl.app",
+  "identifier": "com.snap.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -13,34 +13,35 @@
     "macOSPrivateApi": true,
     "windows": [
       {
-        "title": "pxl",
+        "title": "Snap",
         "width": 800,
         "height": 600,
         "visible": false
       },
       {
         "label": "settings",
-        "title": "pxl Settings",
+        "title": "Snap Settings",
         "url": "index.html#/settings",
-        "width": 480,
-        "height": 420,
+        "width": 520,
+        "height": 768,
         "visible": false
       },
       {
         "label": "overlay",
-        "title": "pxl Overlay",
+        "title": "Snap Overlay",
         "url": "index.html#/overlay",
         "width": 1,
         "height": 1,
         "visible": false,
         "decorations": false,
         "transparent": true,
+        "shadow": false,
         "alwaysOnTop": true,
         "skipTaskbar": true
       },
       {
         "label": "editor",
-        "title": "pxl Editor",
+        "title": "Snap Editor",
         "url": "index.html#/editor",
         "width": 900,
         "height": 700,
@@ -48,7 +49,7 @@
       },
       {
         "label": "recording-controls",
-        "title": "pxl Recording Controls",
+        "title": "Snap Recording Controls",
         "url": "index.html#/recording-controls",
         "width": 180,
         "height": 56,
@@ -56,12 +57,13 @@
         "visible": false,
         "decorations": false,
         "transparent": true,
+        "shadow": false,
         "alwaysOnTop": true,
         "skipTaskbar": true
       },
       {
         "label": "history",
-        "title": "pxl Recent Captures",
+        "title": "Snap Recent Captures",
         "url": "index.html#/history",
         "width": 640,
         "height": 460,
@@ -76,9 +78,15 @@
     "active": true,
     "targets": "all",
     "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png"
+      "icons/std-32.png",
+      "icons/std-32@2x.png",
+      "icons/std-128.png",
+      "icons/std-128@2x.png"
+    ],
+    "resources": [
+      "icons/std-*.png",
+      "icons/progress-*.png",
+      "icons/success-*.png"
     ]
   }
 }

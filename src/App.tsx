@@ -1,7 +1,7 @@
 function App() {
   return (
     <main>
-      <p>pxl</p>
+      <p>Snap</p>
     </main>
   );
 }

@@ -46,7 +46,7 @@ pub trait CredentialStore {
 
 pub struct KeyringCredentialStore;
 
-const KEYRING_SERVICE: &str = "pxl";
+const KEYRING_SERVICE: &str = "Snap";
 const KEYRING_USER: &str = "upload-credentials";
 
 impl CredentialStore for KeyringCredentialStore {

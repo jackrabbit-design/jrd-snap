@@ -302,7 +302,7 @@ mod manual_e2e_check {
     #[test]
     #[ignore]
     fn real_start_and_stop_produces_a_playable_mp4() {
-        let output_path = std::env::temp_dir().join("pxl-manual-e2e-test.mp4");
+        let output_path = std::env::temp_dir().join("snap-manual-e2e-test.mp4");
         let child = start_recording(None, false, &output_path).unwrap();
         sleep(Duration::from_secs(3));
         stop_recording(child).unwrap();

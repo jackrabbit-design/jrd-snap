@@ -6,7 +6,7 @@ use crate::settings::{
     self, CredentialStore, Credentials, HotkeySettings, KeyringCredentialStore, UploadSettings,
 };
 use crate::upload::{build_public_url, upload_object};
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, Position, Size, State};
+use tauri::{AppHandle, Emitter, Manager, Position, Size, State};
 
 #[tauri::command]
 pub fn get_upload_settings(app: AppHandle) -> Result<UploadSettings, String> {
@@ -40,27 +40,62 @@ pub fn get_hotkey_settings(app: AppHandle) -> Result<HotkeySettings, String> {
 pub fn save_hotkey_settings(app: AppHandle, hotkeys: HotkeySettings) -> Result<(), String> {
     let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     settings::save_hotkeys(&dir, &hotkeys)?;
+    crate::tray::update_tray_accelerators(&app, &hotkeys);
     crate::register_shortcuts(&app)
 }
 
-// Size/position the overlay to cover the primary monitor explicitly rather
-// than using native `fullscreen`, which triggers a macOS Space transition
-// and can force the window visible even when created with `visible: false`.
-fn resize_overlay_to_monitor(win: &tauri::WebviewWindow) -> Result<(), String> {
-    if let Some(monitor) = win.primary_monitor().map_err(|e| e.to_string())? {
-        let position = monitor.position();
-        let size = monitor.size();
-        win.set_position(Position::Physical(PhysicalPosition::new(position.x, position.y)))
-            .map_err(|e| e.to_string())?;
-        win.set_size(Size::Physical(PhysicalSize::new(size.width, size.height)))
-            .map_err(|e| e.to_string())?;
+// Finds the index (into both `app.available_monitors()` and, by assumption,
+// `xcap::Monitor::all()`) of whichever monitor contains the given point —
+// e.g. the cursor position, or the overlay window's own position once it's
+// been placed on a monitor. Falls back to the primary monitor's index if the
+// point doesn't land on any of them (should only happen at a rounding edge
+// case). Deliberately uses only Tauri's own monitor APIs for this geometry
+// check — they're self-consistent physical-pixel coordinates guaranteed to
+// match `set_position`/`set_size`, unlike `xcap::Monitor`'s x/y/width/height
+// (whose units vary by platform, e.g. points on macOS) which don't line up
+// with Tauri's coordinates on secondary/differently-scaled monitors.
+pub(crate) fn monitor_index_at(app: &AppHandle, x: i32, y: i32) -> Result<usize, String> {
+    let monitors = app.available_monitors().map_err(|e| e.to_string())?;
+    if let Some(index) = monitors.iter().position(|m| {
+        let pos = m.position();
+        let size = m.size();
+        x >= pos.x && x < pos.x + size.width as i32 && y >= pos.y && y < pos.y + size.height as i32
+    }) {
+        return Ok(index);
     }
+    let primary = app.primary_monitor().map_err(|e| e.to_string())?;
+    Ok(match primary {
+        Some(primary) => monitors
+            .iter()
+            .position(|m| m.position() == primary.position() && m.size() == primary.size())
+            .unwrap_or(0),
+        None => 0,
+    })
+}
+
+// Size/position the overlay to cover whichever monitor the cursor is
+// currently on, explicitly, rather than using native `fullscreen` (which
+// triggers a macOS Space transition and can force the window visible even
+// when created with `visible: false`) or always the primary monitor (which
+// left area-selection and full-screen capture unusable on any other
+// display).
+fn resize_overlay_to_monitor(win: &tauri::WebviewWindow) -> Result<(), String> {
+    let app = win.app_handle();
+    let cursor = app.cursor_position().map_err(|e| e.to_string())?;
+    let index = monitor_index_at(app, cursor.x as i32, cursor.y as i32)?;
+    let monitors = app.available_monitors().map_err(|e| e.to_string())?;
+    let monitor = monitors.get(index).ok_or("no monitor found")?;
+    win.set_position(Position::Physical(*monitor.position()))
+        .map_err(|e| e.to_string())?;
+    win.set_size(Size::Physical(*monitor.size()))
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
 pub fn show_overlay(app: AppHandle) -> Result<(), String> {
     crate::discard_any_active_recording(&app);
+    crate::set_capture_tray_icon(&app, crate::CaptureIconState::Progress);
     let win = app.get_webview_window("overlay").ok_or("overlay window missing")?;
     resize_overlay_to_monitor(&win)?;
     win.show().map_err(|e| e.to_string())?;
@@ -72,12 +107,23 @@ pub fn show_overlay(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn show_overlay_for_recording(app: AppHandle) -> Result<(), String> {
     crate::discard_any_active_recording(&app);
+    crate::set_capture_tray_icon(&app, crate::CaptureIconState::Progress);
     let win = app.get_webview_window("overlay").ok_or("overlay window missing")?;
     resize_overlay_to_monitor(&win)?;
     win.show().map_err(|e| e.to_string())?;
     win.set_focus().map_err(|e| e.to_string())?;
     app.emit_to("overlay", "overlay-mode", serde_json::json!({ "purpose": "record" }))
         .map_err(|e| e.to_string())
+}
+
+// Called by the frontend at the explicit cancel points that don't otherwise
+// reach the backend (Escape, clicking without dragging, the record confirm
+// panel's Cancel button) — everything else that ends a capture (upload
+// success, editor closed unsaved, a start/stop/crash failure) reverts the
+// icon on its own from the Rust side that already handles that event.
+#[tauri::command]
+pub fn reset_capture_icon(app: AppHandle) {
+    crate::set_capture_tray_icon(&app, crate::CaptureIconState::Default);
 }
 
 #[tauri::command]
@@ -89,13 +135,17 @@ pub fn hide_overlay(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn capture_full_screen(app: AppHandle) -> Result<Vec<u8>, String> {
     crate::discard_any_active_recording(&app);
-    capture::capture_full_screen_png()
+    let cursor = app.cursor_position().map_err(|e| e.to_string())?;
+    let index = monitor_index_at(&app, cursor.x as i32, cursor.y as i32)?;
+    capture::capture_full_screen_png(index)
 }
 
 #[tauri::command]
 pub fn capture_area(app: AppHandle, rect: CaptureRect) -> Result<Vec<u8>, String> {
     crate::discard_any_active_recording(&app);
-    capture::capture_area_png(rect)
+    let cursor = app.cursor_position().map_err(|e| e.to_string())?;
+    let index = monitor_index_at(&app, cursor.x as i32, cursor.y as i32)?;
+    capture::capture_area_png(rect, index)
 }
 
 async fn upload_bytes(app: &AppHandle, bytes: Vec<u8>, extension: &str) -> Result<String, String> {
@@ -115,6 +165,7 @@ async fn upload_bytes(app: &AppHandle, bytes: Vec<u8>, extension: &str) -> Resul
 
     upload_object(&settings, &creds, &key, bytes, content_type).await?;
 
+    crate::flash_success_tray_icon(app);
     Ok(build_public_url(&settings, &key))
 }
 
@@ -134,7 +185,7 @@ pub async fn trim_and_upload(
     // A random suffix, not the process id — the pid is constant for the
     // whole session, so a second trim in one session would otherwise reuse
     // the exact same filename.
-    let output = std::env::temp_dir().join(format!("pxl-trimmed-{}.mp4", nanoid::nanoid!(8)));
+    let output = std::env::temp_dir().join(format!("snap-trimmed-{}.mp4", nanoid::nanoid!(8)));
     crate::trim::trim_video(&input, &output, in_point, out_point)?;
     let bytes = std::fs::read(&output).map_err(|e| e.to_string())?;
     let url = upload_bytes(&app, bytes, "mp4").await?;
@@ -161,11 +212,12 @@ pub fn start_recording_command(
     // existing path makes it refuse and exit almost immediately — which the
     // crash monitor then (correctly, but misleadingly) reports as a crash.
     let output_path =
-        std::env::temp_dir().join(format!("pxl-recording-{}.mp4", nanoid::nanoid!(8)));
+        std::env::temp_dir().join(format!("snap-recording-{}.mp4", nanoid::nanoid!(8)));
     let child = match recording::start_recording(region, mic_enabled, &output_path) {
         Ok(child) => child,
         Err(e) => {
             crate::notify_capture_failed(&app, &format!("failed to start recording: {e}"));
+            crate::set_capture_tray_icon(&app, crate::CaptureIconState::Default);
             return Err(e);
         }
     };
@@ -194,7 +246,9 @@ pub fn stop_recording_command(state: State<RecordingState>) -> Result<(), String
 pub fn reopen_last_capture(app: AppHandle) -> Result<(), String> {
     let win = app.get_webview_window("editor").ok_or("editor window missing")?;
     win.show().map_err(|e| e.to_string())?;
-    win.set_focus().map_err(|e| e.to_string())
+    win.set_focus().map_err(|e| e.to_string())?;
+    crate::set_capture_tray_icon(&app, crate::CaptureIconState::Progress);
+    Ok(())
 }
 
 // Reads a recording/trimmed video file's bytes so the frontend can build a

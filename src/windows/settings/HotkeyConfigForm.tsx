@@ -62,7 +62,9 @@ function HotkeyRecorderField({ label, value, onChange }: { label: string; value:
 
   return (
     <label className="field">
-      {label}
+      <div className="label-flex">
+        {label}
+      </div>
       <button
         type="button"
         className="input"
@@ -98,7 +100,9 @@ export default function HotkeyConfigForm() {
 
   return (
     <form onSubmit={handleSubmit} className="settings-section">
-      <h3>Hotkeys</h3>
+      <div className="settings-header">
+        <h2>Hotkeys</h2>
+      </div>
       <HotkeyRecorderField
         label="Capture Area"
         value={hotkeys.captureArea}
@@ -114,10 +118,14 @@ export default function HotkeyConfigForm() {
         value={hotkeys.recordArea}
         onChange={(v) => setHotkeys((h) => ({ ...h, recordArea: v }))}
       />
-      <div className="settings-form-footer">
+      <div className="field">
+        <div className="label-flex"></div>
+        <div className="settings-form-footer">
         <button type="submit" className="button button-primary">
           Save Hotkeys
         </button>
+
+        </div>
         {status && <span className="status-text">{status}</span>}
       </div>
     </form>

@@ -1,6 +1,7 @@
 export type ToolType =
   | "select"
   | "arrow"
+  | "line"
   | "rect"
   | "ellipse"
   | "pen"
@@ -16,7 +17,7 @@ export interface ShapeBase {
 }
 
 export interface PointShape extends ShapeBase {
-  type: "arrow" | "pen" | "highlighter";
+  type: "arrow" | "line" | "pen" | "highlighter";
   points: number[];
 }
 
@@ -34,6 +35,7 @@ export interface TextShape extends ShapeBase {
   y: number;
   text: string;
   fontSize: number;
+  background: boolean;
 }
 
 export type Shape = PointShape | BoxShape | TextShape;

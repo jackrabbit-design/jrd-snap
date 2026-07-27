@@ -54,9 +54,13 @@ export default function UploadConfigForm() {
 
   return (
     <form onSubmit={handleSubmit} className="settings-section">
-      <h3>Upload Destination</h3>
+      <div className="settings-header">
+        <h2>Upload Destination</h2>
+      </div>
       <label className="field">
-        Provider
+          <div className="label-flex">
+            <span>Provider</span>
+          </div>
         <select
           className="select"
           value={settings.provider}
@@ -67,7 +71,9 @@ export default function UploadConfigForm() {
         </select>
       </label>
       <label className="field">
-        Bucket
+        <div className="label-flex">
+          <span>Bucket</span>
+        </div>
         <input
           className="input"
           value={settings.bucket}
@@ -75,20 +81,24 @@ export default function UploadConfigForm() {
         />
       </label>
       <label className="field">
-        Region
+        <div className="label-flex">
+          <span>Region</span>
+        </div>
         <input
           className="input"
           value={settings.region}
           onChange={(e) => setSettings((s) => ({ ...s, region: e.target.value }))}
         />
       </label>
-      <label className="field">
-        <div className="label-flex">
-          <span>Endpoint</span>
-          <span className="field-hint">(Spaces only, e.g. nyc3.digitaloceanspaces.com)</span>
-        </div>
-        <input className="input" value={settings.endpoint ?? ""} onChange={(e) => field("endpoint", e.target.value)} />
-      </label>
+      {settings.provider === "Spaces" && (
+        <label className="field">
+          <div className="label-flex">
+            <span>Endpoint</span>
+            <span className="field-hint">e.g. nyc3.digitaloceanspaces.com</span>
+          </div>
+          <input className="input" value={settings.endpoint ?? ""} onChange={(e) => field("endpoint", e.target.value)} />
+        </label>
+      )}
       <label className="field">
         <div className="label-flex">
           <span>Custom domain / CDN</span>
@@ -137,10 +147,13 @@ export default function UploadConfigForm() {
           onChange={(e) => setSecretAccessKey(e.target.value)}
         />
       </label>
-      <div className="settings-form-footer">
-        <button type="submit" className="button button-primary">
-          Save
-        </button>
+      <div className=" field">
+        <div className="label-flex">&nbsp;</div>
+        <div className="settings-form-footer">
+          <button type="submit" className="button button-primary">
+            Save Connection
+          </button>
+        </div>
         {status && <span className="status-text">{status}</span>}
       </div>
     </form>

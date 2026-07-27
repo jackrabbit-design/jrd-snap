@@ -17,7 +17,7 @@ function rectShape(id: string): BoxShape {
 }
 
 function textShape(id: string): TextShape {
-  return { id, type: "text", color: "#000000", strokeWidth: 1, x: 0, y: 0, text: "hello", fontSize: 12 };
+  return { id, type: "text", color: "#000000", strokeWidth: 1, x: 0, y: 0, text: "hello", fontSize: 12, background: false };
 }
 
 describe("toolState", () => {

@@ -28,26 +28,39 @@ pub fn encode_png(img: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> Result<Vec<u8>, Strin
     Ok(bytes)
 }
 
-fn primary_monitor() -> Result<xcap::Monitor, String> {
+// Which monitor to capture is chosen by the caller as an index into
+// `xcap::Monitor::all()` — NOT by matching coordinates against
+// `xcap::Monitor`'s own x/y/width/height. Those are in whatever unit each
+// platform's native API happens to report (e.g. on macOS, `CGDisplayBounds`
+// gives points, not physical pixels), which doesn't line up with Tauri's
+// `Physical*` window-positioning types on secondary/differently-scaled
+// monitors. The caller instead finds the right monitor using Tauri's own
+// (self-consistent) monitor APIs and passes its index through here, so the
+// two coordinate systems never need to be reconciled directly.
+fn nth_monitor_or_primary(index: usize) -> Result<xcap::Monitor, String> {
     let monitors = xcap::Monitor::all().map_err(|e| e.to_string())?;
-    let fallback_index = monitors
-        .iter()
-        .position(|m| m.is_primary().unwrap_or(false))
-        .unwrap_or(0);
+    let index = if index < monitors.len() {
+        index
+    } else {
+        monitors
+            .iter()
+            .position(|m| m.is_primary().unwrap_or(false))
+            .unwrap_or(0)
+    };
     monitors
         .into_iter()
-        .nth(fallback_index)
+        .nth(index)
         .ok_or_else(|| "no monitor found".to_string())
 }
 
-pub fn capture_full_screen_png() -> Result<Vec<u8>, String> {
-    let monitor = primary_monitor()?;
+pub fn capture_full_screen_png(monitor_index: usize) -> Result<Vec<u8>, String> {
+    let monitor = nth_monitor_or_primary(monitor_index)?;
     let img = monitor.capture_image().map_err(|e| e.to_string())?;
     encode_png(&img)
 }
 
-pub fn capture_area_png(rect: CaptureRect) -> Result<Vec<u8>, String> {
-    let monitor = primary_monitor()?;
+pub fn capture_area_png(rect: CaptureRect, monitor_index: usize) -> Result<Vec<u8>, String> {
+    let monitor = nth_monitor_or_primary(monitor_index)?;
     let img = monitor.capture_image().map_err(|e| e.to_string())?;
     let cropped = crop_to_rect(&img, rect);
     encode_png(&cropped)

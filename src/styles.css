@@ -4,7 +4,7 @@
   --fg: #1d1d1f;
   --fg-muted: #6e6e73;
   --border: #d8d8dc;
-  --accent: #3b82f6;
+  --accent: #00ACD9;
   --accent-fg: #ffffff;
   --danger: #dc2626;
   --danger-bg: #fef2f2;
@@ -15,7 +15,7 @@
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font: "Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -25,7 +25,7 @@
     --fg: #f2f2f3;
     --fg-muted: #9a9a9e;
     --border: #3d3d40;
-    --accent: #5a9cff;
+    --accent: #00ACD9;
     --accent-fg: #0b1220;
     --danger: #f87171;
     --danger-bg: #3a1d1d;
@@ -46,7 +46,7 @@ body,
 body {
   margin: 0;
   font-family: var(--font);
-  font-size: 13px;
+  font-size: 15px;
   color: var(--fg);
   /* No opaque background here on purpose: the overlay window relies on
      Tauri's window-level `transparent: true` to show the real desktop
@@ -66,28 +66,82 @@ textarea {
   color: inherit;
 }
 
+textarea {
+  background-color: transparent;
+  font-weight: 600;
+}
+
+/* Without this, WebKit still renders its native macOS control chrome (a
+   rounded "squircle" bezel) underneath a <button>'s own CSS background/
+   border/border-radius — showing as two overlapping bezel shapes on the
+   same element instead of just the one this app actually styles. */
+button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Same squircle-bezel problem as button, but for checkboxes — replace the
+   native control entirely with a flat box + hand-drawn checkmark. */
+input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  display: inline-block;
+  vertical-align: middle;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+}
+
+input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--accent-fg);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
 /* Generic form controls, used by both settings forms */
 
 .field {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  flex-direction: row;
+  /* gap: var(--space-1); */
+  gap: 5%;
+  align-items: center;
 }
 
 .label-flex {
   display: flex;
+  flex-direction: column;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-end;
+  flex: 0 0 35%;
+  text-align: right;
 }
 
 .field-hint {
   font-weight: 400;
   color: var(--fg-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .input,
 .select {
+  flex: 0 0 60%;
   padding: 6px var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -136,6 +190,7 @@ textarea {
   background: var(--danger);
   border-color: var(--danger);
   color: white;
+  padding: 6px 14px;
 }
 
 .status-text {
@@ -178,14 +233,48 @@ textarea {
   background: var(--bg);
 }
 
+#logo {
+  width: 250px;
+  margin: 40px auto 20px;
+}
+
 .settings-header {
-  padding: var(--space-4) var(--space-4) var(--space-2);
+  /* padding: var(--space-4) var(--space-4) var(--space-2); */
+  padding: var(--space-4) 0 var(--space-2);
+}
+
+.settings-tabs {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0 var(--space-4) var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-tab {
+  padding: var(--space-2) var(--space-1);
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings-tab:hover {
+  color: var(--fg);
+}
+
+.settings-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
 }
 
 .settings-header h2 {
-  margin: 0;
-  font-size: 15px;
+  margin: 0 0 10px;
+  font-size: 18px;
   font-weight: 600;
+  text-align: center;
 }
 
 .settings-section {
@@ -317,10 +406,16 @@ textarea {
   border-bottom: 1px solid var(--border);
 }
 
+.editor-page {
+  .editor-header-row {
+    justify-content: flex-end;
+  }
+}
+
 .editor-toolbar-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: space-between !important;
   gap: var(--space-2);
 }
 
@@ -362,16 +457,43 @@ textarea {
 }
 
 .color-swatch {
-  width: 28px;
-  height: 28px;
+  width: 18px;
+  height: 18px;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: none;
+  margin-inline: 5px;
+}
+input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+  margin: 0;
+  border-radius: 50%;
+  overflow: hidden;
 }
 
 .stroke-width-input {
-  width: 44px;
+  width: 70px;
+  height: 18px;
+  margin-inline: 5px;
+  appearance: none;
+  background: transparent url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNzAiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCA3MCAxOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTAgOC41ODA0NEMwIDcuNDQ1MDcgMC44NjAzMzEgNi40OTQ0MSAxLjk5MDA3IDYuMzgxNDRMNjUuNjAyIDAuMDIwMjQ2MkM2Ny45NTY3IC0wLjIxNTIyOCA3MCAxLjYzMzkxIDcwIDQuMDAwMzlWMTMuMTYwNUM3MCAxNS41MjcgNjcuOTU2NyAxNy4zNzYxIDY1LjYwMiAxNy4xNDA2TDEuOTkwMDcgMTAuNzc5NUMwLjg2MDMzMSAxMC42NjY1IDAgOS43MTU4MiAwIDguNTgwNDRaIiBmaWxsPSIjMDBBQ0Q5Ii8+Cjwvc3ZnPgo=") no-repeat center;
+  background-size: 58px 12px;
+}
+
+.stroke-width-input:disabled {
+  opacity: 0.5;
+}
+
+.text-background-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-inline-start: var(--space-2);
+  font-size: 12px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+  cursor: pointer;
 }
 
 .editor-actions {

@@ -8,75 +8,52 @@ interface Props {
 // paths) so each one is easy to get right without a way to preview them.
 export default function ToolIcon({ type }: Props) {
   const common = {
-    width: 18,
-    height: 18,
-    viewBox: "0 0 24 24",
+    width: 14,
+    height: 14,
+    viewBox: "0 0 14 14",
   };
 
   switch (type) {
     case "select":
       return (
-        <svg {...common}>
-          <polygon
-            points="4,3 4,18 8,14.5 10.5,20 13,19 10.5,13.5 16,13.5"
-            fill="currentColor"
-          />
-        </svg>
+        <svg width="14" height="14" viewBox="0 0 14 14"><title>Select</title><path d="M1.42997 0.0125003C1.70835 -0.0222149 1.99153 0.0156326 2.25223 0.122852H2.25321L12.9895 4.54375C13.2867 4.66605 13.5412 4.87314 13.721 5.13945C13.8783 5.37253 13.9728 5.64176 13.9954 5.9207L14.0003 6.04082L13.9964 6.16094C13.9777 6.44012 13.8877 6.71086 13.7337 6.94609C13.5577 7.21484 13.3063 7.42609 13.011 7.55254V7.55156L9.18973 9.18926L7.55301 13.0105C7.42655 13.3059 7.21535 13.5572 6.94657 13.7332C6.6777 13.9092 6.36264 14.0021 6.0413 13.9998C5.71996 13.9975 5.40628 13.9003 5.13993 13.7205C4.87365 13.5407 4.66651 13.2862 4.54422 12.9891L0.123326 2.25371L0.081334 2.14043C-0.00614254 1.874 -0.0235644 1.58864 0.0315293 1.3123L0.0598496 1.19512C0.13487 0.924776 0.278561 0.677747 0.477818 0.478321C0.705522 0.25044 0.99593 0.095311 1.3118 0.0320315L1.42997 0.0125003ZM6.05887 11.4158L7.41044 8.26641L7.4788 8.12578C7.6533 7.80697 7.93011 7.55339 8.26688 7.40898L11.4163 6.0584L2.30985 2.30938L6.05887 11.4158Z" fill="#fff"/></svg>
       );
     case "arrow":
       return (
-        <svg {...common} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="5" y1="19" x2="19" y2="5" />
-          <polyline points="11,5 19,5 19,13" />
-        </svg>
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none"><title>Arrow</title><path fill="#fff" d="M10.858.01a1 1 0 0 1 1.132 1.132l-1 7a1 1 0 0 1-1.98-.283l.575-4.03-7.878 7.878a1 1 0 1 1-1.414-1.414L8.17 2.414l-4.03.577a1 1 0 0 1-.283-1.981l7-1Z"/></svg>
+      );
+    case "line":
+      return (
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none"><title>Line</title><path fill="#fff" d="M11.707.293a1 1 0 0 1 0 1.414l-10 10a1 1 0 0 1-1.414-1.414l10-10a1 1 0 0 1 1.414 0Z"/></svg>
       );
     case "rect":
       return (
-        <svg {...common} fill="none" stroke="currentColor" strokeWidth="1.6">
-          <rect x="4" y="6" width="16" height="12" rx="1.5" />
-        </svg>
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="14" fill="none"><title>Rectangle</title><path fill="#fff" d="M19 0a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V1a1 1 0 0 1 1-1h18ZM2 12h16V2H2v10Z"/></svg>
+
       );
     case "ellipse":
       return (
-        <svg {...common} fill="none" stroke="currentColor" strokeWidth="1.6">
-          <ellipse cx="12" cy="12" rx="9" ry="6" />
-        </svg>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none"><title>Ellipse</title><path fill="#fff" d="M14 8A6 6 0 1 0 2 8a6 6 0 0 0 12 0Zm2 0A8 8 0 1 1 0 8a8 8 0 0 1 16 0Z"/></svg>
       );
     case "pen":
       return (
-        <svg {...common} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-          <line x1="5" y1="19" x2="17" y2="7" />
-          <circle cx="18.5" cy="5.5" r="1.5" fill="currentColor" stroke="none" />
-        </svg>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="20" fill="none"><title>Pencil</title><path fill="#fff" d="M9.444.107a1.83 1.83 0 0 1 .914-.08c.357.065.665.248.897.515.276.317.37.696.403.994.034.307.012.632-.033.946-.09.63-.302 1.38-.572 2.173-.543 1.595-1.387 3.55-2.225 5.443-.847 1.914-1.687 3.76-2.259 5.2-.088.224-.168.433-.24.628.838-.698 1.866-1.68 2.911-2.696 1.08-1.05 2.185-2.137 3.045-2.893.423-.371.837-.709 1.188-.92.16-.097.405-.229.684-.275.15-.025.38-.039.631.057.244.093.434.261.558.463l.049.088.051.12c.106.277.108.556.101.726-.01.23-.048.482-.098.73-.1.5-.274 1.1-.478 1.73-.41 1.263-.983 2.745-1.478 3.968l-.004.01c.001.003.006.013.018.024.005.006.01.008.014.01h.003l.529-.265a1 1 0 0 1 .894 1.789l-.529.264c-1.684.842-3.465-.884-2.78-2.58.49-1.211 1.042-2.642 1.43-3.838.018-.053.033-.106.05-.157-.726.669-1.587 1.514-2.483 2.384-1.088 1.057-2.229 2.15-3.166 2.916-.462.377-.925.718-1.337.93-.202.103-.46.212-.74.248-.295.037-.742.003-1.099-.355-.367-.367-.384-.846-.38-1.056a3.78 3.78 0 0 1 .124-.82c.136-.545.38-1.225.673-1.966.59-1.489 1.457-3.395 2.29-5.274.84-1.9 1.65-3.78 2.16-5.277.24-.707.397-1.29.469-1.728a5.009 5.009 0 0 0-.263.224c-.71.642-1.61 1.752-2.563 3.17-1.901 2.828-3.868 6.653-4.848 9.816a1 1 0 1 1-1.91-.592c1.05-3.39 3.115-7.391 5.098-10.34.987-1.468 1.993-2.734 2.882-3.538.433-.391.917-.746 1.418-.916Z"/></svg>
       );
     case "highlighter":
       return (
-        <svg {...common} fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" opacity="0.85">
-          <line x1="5" y1="19" x2="17" y2="7" />
-        </svg>
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="18" fill="none"><title>Highlighter</title><path fill="#fff" d="M17.02.586a2 2 0 0 1 2.83 0l2.828 2.828a2 2 0 0 1 0 2.828l-9.193 9.192a2 2 0 0 1-2.46.29L9.468 17.17a2 2 0 0 1-1.36.534H1a1 1 0 0 1 0-2h3.888a1.957 1.957 0 0 1 .578-1.404l2.058-2.09a1.999 1.999 0 0 1 .304-2.433L17.02.586ZM6.89 15.705l1.217-.001 1.462-1.357-.675-.675-2.004 2.033Zm2.352-4.513.342.342.008.007.008.009 2.471 2.47 6.415-6.415-2.829-2.829-6.415 6.416Zm7.83-7.83 2.828 2.83 1.364-1.364L18.436 2 17.07 3.362Z"/></svg>
       );
     case "text":
       return (
-        <svg {...common}>
-          <text x="12" y="17" fontSize="15" fontWeight="700" textAnchor="middle" fill="currentColor">
-            T
-          </text>
-        </svg>
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="14" fill="none"><title>Text</title><path fill="#fff" d="M11 0a1 1 0 1 1 0 2H7v11a1 1 0 1 1-2 0V2H1a1 1 0 0 1 0-2h10Z"/></svg>
       );
     case "blur":
       return (
-        <svg {...common} fill="currentColor">
-          {[8, 14, 20].flatMap((cy) =>
-            [7, 13, 19].map((cx) => <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r={1.5} />),
-          )}
-        </svg>
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="17" fill="none"><title>Blur</title><path fill="#fff" d="M10 10.015c0-.366-.124-.914-.396-1.625-.264-.693-.637-1.465-1.064-2.253C7.703 4.592 6.694 3.055 6 2.043c-.694 1.012-1.703 2.55-2.54 4.094-.427.788-.8 1.56-1.064 2.253C2.124 9.1 2 9.65 2 10.015c0 2.426 1.844 4.293 4 4.293 2.156 0 4-1.867 4-4.293Zm2 0c0 3.421-2.633 6.293-6 6.293s-6-2.872-6-6.293c0-.731.227-1.55.526-2.337.307-.806.725-1.663 1.176-2.494.903-1.665 1.98-3.3 2.692-4.334l.075-.103a1.943 1.943 0 0 1 3.062 0l.075.103.594.88c.646.974 1.42 2.205 2.098 3.454.451.831.869 1.688 1.176 2.494.3.786.526 1.606.526 2.337Z"/></svg>
       );
     case "crop":
       return (
-        <svg {...common} fill="none" stroke="currentColor" strokeWidth="1.6">
-          <path d="M7 3 L7 17 L21 17" />
-          <path d="M3 7 L17 7 L17 21" />
-        </svg>
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none"><title>Crop</title><path fill="#fff" d="M4 0a1 1 0 0 1 1 1v2h8a2 2 0 0 1 2 2v8h2a1 1 0 1 1 0 2h-2v2a1 1 0 1 1-2 0v-2H5a2 2 0 0 1-2-2V5H1a1 1 0 0 1 0-2h2V1a1 1 0 0 1 1-1Zm1 13h8V5H5v8Z"/></svg>
       );
     default:
       return null;

@@ -20,8 +20,10 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 describe("SettingsApp", () => {
-  it("renders the settings heading", () => {
+  it("renders the Connection and Hotkeys tabs, starting on Connection", () => {
     render(<SettingsApp />);
-    expect(screen.getByText("pxl Settings")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Connection" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Hotkeys" })).toBeInTheDocument();
+    expect(screen.getByText("Upload Destination")).toBeInTheDocument();
   });
 });

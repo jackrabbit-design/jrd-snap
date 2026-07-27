@@ -27,7 +27,7 @@ pub async fn upload_object(
     bytes: Vec<u8>,
     content_type: &str,
 ) -> Result<(), String> {
-    let aws_creds = AwsCredentials::new(&creds.access_key_id, &creds.secret_access_key, None, None, "pxl");
+    let aws_creds = AwsCredentials::new(&creds.access_key_id, &creds.secret_access_key, None, None, "snap");
     let mut config_builder = aws_sdk_s3::config::Builder::new()
         .region(Region::new(settings.region.clone()))
         .credentials_provider(aws_creds)

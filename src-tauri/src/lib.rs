@@ -18,6 +18,60 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CaptureIconState {
+    Default,
+    Progress,
+    Success,
+}
+
+fn icon_filename(state: CaptureIconState) -> &'static str {
+    match state {
+        CaptureIconState::Default => "std-32.png",
+        CaptureIconState::Progress => "progress-32.png",
+        CaptureIconState::Success => "success-32.png",
+    }
+}
+
+// Bumped by every call to set_capture_tray_icon, so the delayed "success ->
+// default" revert (below) can tell whether it's still the most recent icon
+// change by the time its 3 seconds are up, or whether a newer capture has
+// since taken over — in which case reverting would incorrectly stomp on
+// that newer capture's own progress icon.
+static ICON_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+pub(crate) fn set_capture_tray_icon(app: &tauri::AppHandle, state: CaptureIconState) -> u64 {
+    let generation = ICON_GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+    let Ok(resource_dir) = app.path().resource_dir() else {
+        eprintln!("failed to resolve resource dir for tray icon");
+        return generation;
+    };
+    let path = resource_dir.join("icons").join(icon_filename(state));
+    match tauri::image::Image::from_path(&path) {
+        Ok(image) => {
+            let tray = app.state::<tauri::tray::TrayIcon<tauri::Wry>>();
+            if let Err(e) = tray.set_icon(Some(image)) {
+                eprintln!("failed to set tray icon: {e}");
+            }
+        }
+        Err(e) => eprintln!("failed to load tray icon {}: {e}", path.display()),
+    }
+    generation
+}
+
+// Shows the success icon, then reverts to the default icon after 3 seconds —
+// unless a newer capture has already changed the icon again by then.
+pub(crate) fn flash_success_tray_icon(app: &tauri::AppHandle) {
+    let generation = set_capture_tray_icon(app, CaptureIconState::Success);
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        if ICON_GENERATION.load(std::sync::atomic::Ordering::SeqCst) == generation {
+            set_capture_tray_icon(&handle, CaptureIconState::Default);
+        }
+    });
+}
+
 pub(crate) fn register_shortcuts(app: &tauri::AppHandle) -> Result<(), String> {
     let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     let hotkeys = settings::load_hotkeys(&dir);
@@ -49,7 +103,7 @@ pub(crate) fn notify_capture_failed(app: &tauri::AppHandle, e: &str) {
     if let Err(e) = app
         .notification()
         .builder()
-        .title("pxl")
+        .title("Snap")
         .body(format!("Capture failed: {e}"))
         .show()
     {
@@ -79,10 +133,23 @@ pub(crate) fn show_recording_controls(app: &tauri::AppHandle, region: recording:
         eprintln!("recording-controls window missing");
         return;
     };
-    let width = 180i32;
-    let height = 56i32;
-    let x = region.x + (region.width as i32 - width) / 2;
-    let y = region.y + region.height as i32 + 12;
+    // `region.x`/`region.y` are relative to the overlay window the user drew
+    // the selection in (see OverlayApp.tsx), not the desktop's global
+    // coordinate space that `set_position` expects — on the primary monitor
+    // those happen to be the same thing (both start at 0,0), which is why
+    // this only showed up as a bug on a secondary monitor. The overlay is
+    // still showing (and still positioned over the target monitor) at this
+    // point, so its own on-screen position gives that monitor's global
+    // origin to offset by.
+    let (origin_x, origin_y) = app
+        .get_webview_window("overlay")
+        .and_then(|overlay| overlay.outer_position().ok())
+        .map(|pos| (pos.x, pos.y))
+        .unwrap_or((0, 0));
+    let width = region.width as i32;
+    let height = 100i32;
+    let x = origin_x + region.x;
+    let y = origin_y + region.y + region.height as i32 + 12;
     let _ = win.set_position(Position::Physical(PhysicalPosition::new(x, y)));
     let _ = win.set_size(Size::Physical(PhysicalSize::new(width as u32, height as u32)));
     let _ = win.show();
@@ -91,6 +158,31 @@ pub(crate) fn show_recording_controls(app: &tauri::AppHandle, region: recording:
 pub(crate) fn hide_recording_controls(app: &tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("recording-controls") {
         let _ = win.hide();
+    }
+}
+
+// Clicking the tray icon (to open its menu) is often the only way back to a
+// window once the dock icon is hidden (Accessory activation policy) and a
+// fullscreen app on another Space has focus. `set_focus()` alone asks macOS
+// to switch to the window's Space, but that Space-switch is unreliable over
+// a fullscreen app — it silently no-ops as often as it works, which is why
+// this previously took several clicks to "catch". Marking the window
+// visible-on-all-workspaces first (NSWindowCollectionBehavior::
+// CanJoinAllSpaces) sidesteps the whole problem: the window can then be
+// ordered to the front of whatever Space is already active, no space-switch
+// required. Limited to the windows that hold real content a user would want
+// back; "overlay" (transient capture UI) and "recording-controls" (a small
+// floating control, not something to get "lost" behind another app) are
+// deliberately excluded.
+pub(crate) fn raise_open_windows(app: &tauri::AppHandle) {
+    for label in ["editor", "settings", "history"] {
+        if let Some(win) = app.get_webview_window(label) {
+            if win.is_visible().unwrap_or(false) {
+                let _ = win.set_visible_on_all_workspaces(true);
+                let _ = win.show();
+                let _ = win.set_focus();
+            }
+        }
     }
 }
 
@@ -124,6 +216,7 @@ pub(crate) fn monitor_recording_for_crash(app: &tauri::AppHandle, expected_path:
                     notify_capture_failed(app, "recording process exited unexpectedly");
                     set_recording_tray_state(app, false);
                     hide_recording_controls(app);
+                    set_capture_tray_icon(app, CaptureIconState::Default);
                     return;
                 }
             },
@@ -257,11 +350,16 @@ pub fn run() {
             commands::read_video_base64,
             commands::record_capture_history,
             commands::get_capture_history,
+            commands::reset_capture_icon,
         ])
         .manage(recording::RecordingState::default())
         .manage(LastCaptureState::default())
         .manage(CaptureHistoryState::default())
         .setup(|app| {
+            // Menubar-only app — no Dock icon, no Cmd+Tab entry.
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
             tray::build_tray(app.handle())?;
 
             let handle_ffmpeg = app.handle().clone();
@@ -279,10 +377,10 @@ pub fn run() {
                 eprintln!("failed to register global shortcuts: {e}");
             }
 
-            // Closing the settings/editor windows via the native close button
-            // would otherwise destroy them, so the next tray click/capture
-            // could never find or re-show them. Hide instead.
-            for label in ["settings", "editor", "history"] {
+            // Closing the settings/editor/history windows via the native
+            // close button would otherwise destroy them, so the next tray
+            // click/capture could never find or re-show them. Hide instead.
+            for label in ["settings", "history"] {
                 if let Some(win) = app.get_webview_window(label) {
                     let win_to_hide = win.clone();
                     win.on_window_event(move |event| {
@@ -294,12 +392,42 @@ pub fn run() {
                 }
             }
 
+            // The editor gets the same prevent-close-hide-instead treatment,
+            // plus: closing it via the native button (as opposed to a
+            // successful upload, which hides it itself from the frontend)
+            // means whatever capture was open is being abandoned unsaved —
+            // revert the tray icon back to default rather than leaving it
+            // stuck on "in progress" forever.
+            if let Some(win) = app.get_webview_window("editor") {
+                let win_to_hide = win.clone();
+                let handle_editor_close = app.handle().clone();
+                win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = win_to_hide.hide();
+                        set_capture_tray_icon(&handle_editor_close, CaptureIconState::Default);
+                    }
+                });
+            }
+
             let handle = app.handle().clone();
             app.listen("trigger-capture-full", move |_event| {
                 discard_any_active_recording(&handle);
-                match capture::capture_full_screen_png() {
+                set_capture_tray_icon(&handle, CaptureIconState::Progress);
+                // The full-screen hotkey captures instantly with no overlay
+                // to read a position from, so use wherever the cursor is —
+                // that's the monitor the user is actually looking at.
+                let result = handle
+                    .cursor_position()
+                    .map_err(|e| e.to_string())
+                    .and_then(|cursor| commands::monitor_index_at(&handle, cursor.x as i32, cursor.y as i32))
+                    .and_then(capture::capture_full_screen_png);
+                match result {
                     Ok(bytes) => open_editor_with_png(&handle, bytes),
-                    Err(e) => notify_capture_failed(&handle, &e),
+                    Err(e) => {
+                        notify_capture_failed(&handle, &e);
+                        set_capture_tray_icon(&handle, CaptureIconState::Default);
+                    }
                 }
             });
 
@@ -312,12 +440,27 @@ pub fn run() {
 
             if let Some(overlay_window) = app.get_webview_window("overlay") {
                 let handle3 = app.handle().clone();
+                let overlay_window3 = overlay_window.clone();
                 overlay_window.listen("overlay-selection", move |event| {
                     match serde_json::from_str::<capture::CaptureRect>(event.payload()) {
-                        Ok(rect) => match capture::capture_area_png(rect) {
-                            Ok(bytes) => open_editor_with_png(&handle3, bytes),
-                            Err(e) => notify_capture_failed(&handle3, &e),
-                        },
+                        // The overlay window was already resized to exactly
+                        // cover the target monitor (see
+                        // `resize_overlay_to_monitor`), so its own position
+                        // tells us which monitor to actually capture from.
+                        Ok(rect) => {
+                            let result = overlay_window3
+                                .outer_position()
+                                .map_err(|e| e.to_string())
+                                .and_then(|pos| commands::monitor_index_at(overlay_window3.app_handle(), pos.x, pos.y))
+                                .and_then(|index| capture::capture_area_png(rect, index));
+                            match result {
+                                Ok(bytes) => open_editor_with_png(&handle3, bytes),
+                                Err(e) => {
+                                    notify_capture_failed(&handle3, &e);
+                                    set_capture_tray_icon(&handle3, CaptureIconState::Default);
+                                }
+                            }
+                        }
                         Err(e) => eprintln!("failed to parse overlay-selection payload: {e}"),
                     }
                 });
@@ -341,10 +484,10 @@ pub fn run() {
                     hide_recording_controls(&handle7);
                     match recording::stop_recording(child) {
                         Ok(()) => open_editor_with_video(&handle7, &output_path),
-                        Err(e) => notify_capture_failed(
-                            &handle7,
-                            &format!("failed to stop recording: {e}"),
-                        ),
+                        Err(e) => {
+                            notify_capture_failed(&handle7, &format!("failed to stop recording: {e}"));
+                            set_capture_tray_icon(&handle7, CaptureIconState::Default);
+                        }
                     }
                 }
             });
