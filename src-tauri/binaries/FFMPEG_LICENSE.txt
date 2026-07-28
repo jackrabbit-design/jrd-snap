@@ -1,0 +1,21 @@
+This application bundles builds of FFmpeg (https://ffmpeg.org) for both
+Apple Silicon and Intel Macs, compiled from source tag n7.1.5 (commit
+3a0867c2bfda4a4d4309ca1a8cbdc6175e67f587) at
+https://github.com/FFmpeg/FFmpeg, statically linked against x264 (commit
+b35605ace3ddf7c1a5d67a2eb553f034aef41d55 on the "stable" branch) at
+https://code.videolan.org/videolan/x264, with the following non-default
+FFmpeg options:
+
+  --enable-gpl --enable-libx264
+
+Because it is built with --enable-gpl and linked against libx264, both
+bundled FFmpeg binaries as a whole are licensed under the GNU General
+Public License, version 2 or later. The full license text is available at
+https://www.gnu.org/licenses/gpl-2.0.html.
+
+Corresponding source code for the exact builds used is the unmodified
+upstream source at the tags/commits above. See src-tauri/scripts/build-ffmpeg.sh
+in this application's source repository for the exact build steps.
+
+This notice applies only to the bundled `ffmpeg` binaries, not to the rest
+of this application.

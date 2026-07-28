@@ -7,12 +7,6 @@ interface Props {
 // Simple, geometrically-trivial icons (basic shapes/lines only, no freeform
 // paths) so each one is easy to get right without a way to preview them.
 export default function ToolIcon({ type }: Props) {
-  const common = {
-    width: 14,
-    height: 14,
-    viewBox: "0 0 14 14",
-  };
-
   switch (type) {
     case "select":
       return (

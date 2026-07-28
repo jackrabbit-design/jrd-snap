@@ -3,3 +3,8 @@ dist/
 src-tauri/target/
 .DS_Store
 .worktrees/
+
+# Compiled by src-tauri/scripts/build-ffmpeg.sh — not committed (see that
+# script to regenerate). The license notice alongside it IS committed.
+src-tauri/binaries/*
+!src-tauri/binaries/*.txt

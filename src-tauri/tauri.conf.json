@@ -73,7 +73,9 @@
     "resources": [
       "icons/std-*.png",
       "icons/progress-*.png",
-      "icons/success-*.png"
-    ]
+      "icons/success-*.png",
+      "binaries/FFMPEG_LICENSE.txt"
+    ],
+    "externalBin": ["binaries/ffmpeg"]
   }
 }
