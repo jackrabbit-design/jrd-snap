@@ -6,7 +6,9 @@ use crate::settings::{
     self, CredentialStore, Credentials, HotkeySettings, KeyringCredentialStore, UploadSettings,
 };
 use crate::upload::{build_public_url, upload_object};
-use tauri::{AppHandle, Emitter, Manager, Position, Size, State};
+use tauri::{
+    AppHandle, Emitter, Manager, Position, Size, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+};
 
 #[tauri::command]
 pub fn get_upload_settings(app: AppHandle) -> Result<UploadSettings, String> {
@@ -73,47 +75,104 @@ pub(crate) fn monitor_index_at(app: &AppHandle, x: i32, y: i32) -> Result<usize,
     })
 }
 
-// Size/position the overlay to cover whichever monitor the cursor is
-// currently on, explicitly, rather than using native `fullscreen` (which
-// triggers a macOS Space transition and can force the window visible even
-// when created with `visible: false`) or always the primary monitor (which
-// left area-selection and full-screen capture unusable on any other
-// display).
-fn resize_overlay_to_monitor(win: &tauri::WebviewWindow) -> Result<(), String> {
-    let app = win.app_handle();
-    let cursor = app.cursor_position().map_err(|e| e.to_string())?;
-    let index = monitor_index_at(app, cursor.x as i32, cursor.y as i32)?;
+const OVERLAY_LABEL_PREFIX: &str = "overlay-";
+
+fn overlay_label(index: usize) -> String {
+    format!("{OVERLAY_LABEL_PREFIX}{index}")
+}
+
+// The reverse of `overlay_label` — an overlay window's own label directly
+// encodes which monitor it covers, so once we know *which* overlay window
+// the user actually interacted with, no further coordinate math is needed
+// to figure out the target monitor.
+fn overlay_monitor_index(window: &WebviewWindow) -> Result<usize, String> {
+    window
+        .label()
+        .strip_prefix(OVERLAY_LABEL_PREFIX)
+        .and_then(|n| n.parse::<usize>().ok())
+        .ok_or_else(|| format!("window \"{}\" is not an overlay window", window.label()))
+}
+
+// Creates (or repositions, if left over from a previous show) one overlay
+// window per currently-connected monitor, so area capture/recording can be
+// started from anywhere — a hotkey, or a tray menu item, whose click
+// necessarily happens on whichever monitor has the menu bar, giving no
+// usable signal for "which monitor does the user actually want". Showing
+// the crosshair overlay on every monitor at once (the same approach macOS's
+// own screenshot tool uses) sidesteps needing to guess at all: whichever
+// window the user actually drags in decides the target monitor.
+pub(crate) fn ensure_overlay_windows(app: &AppHandle) -> Result<Vec<WebviewWindow>, String> {
     let monitors = app.available_monitors().map_err(|e| e.to_string())?;
-    let monitor = monitors.get(index).ok_or("no monitor found")?;
-    win.set_position(Position::Physical(*monitor.position()))
-        .map_err(|e| e.to_string())?;
-    win.set_size(Size::Physical(*monitor.size()))
-        .map_err(|e| e.to_string())?;
-    Ok(())
+    let mut windows = Vec::with_capacity(monitors.len());
+    for (index, monitor) in monitors.iter().enumerate() {
+        let label = overlay_label(index);
+        let win = match app.get_webview_window(&label) {
+            Some(win) => win,
+            None => WebviewWindowBuilder::new(app, &label, WebviewUrl::App("index.html#/overlay".into()))
+                .decorations(false)
+                .transparent(true)
+                .shadow(false)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .visible(false)
+                .build()
+                .map_err(|e| e.to_string())?,
+        };
+        win.set_position(Position::Physical(*monitor.position()))
+            .map_err(|e| e.to_string())?;
+        win.set_size(Size::Physical(*monitor.size()))
+            .map_err(|e| e.to_string())?;
+        windows.push(win);
+    }
+    // A monitor was unplugged since the last time overlays were shown —
+    // close its now-stale window instead of leaving it around forever.
+    for (label, win) in app.webview_windows() {
+        if label.starts_with(OVERLAY_LABEL_PREFIX) && !windows.iter().any(|w| *w.label() == label) {
+            let _ = win.close();
+        }
+    }
+    Ok(windows)
+}
+
+fn hide_all_overlays(app: &AppHandle) {
+    for (label, win) in app.webview_windows() {
+        if label.starts_with(OVERLAY_LABEL_PREFIX) {
+            let _ = win.hide();
+        }
+    }
+}
+
+fn show_overlays(app: &AppHandle, purpose: &str) -> Result<(), String> {
+    crate::discard_any_active_recording(app);
+    crate::set_capture_tray_icon(app, crate::CaptureIconState::Progress);
+    let windows = ensure_overlay_windows(app)?;
+    for win in &windows {
+        win.show().map_err(|e| e.to_string())?;
+    }
+    // Only one window can actually hold keyboard focus — best-effort give
+    // it to whichever monitor the cursor happens to be on (correct for the
+    // common hotkey-triggered case; for a tray-triggered one it'll land on
+    // the menu-bar's monitor, but Escape still works from any of them once
+    // that window is clicked).
+    if let Ok(cursor) = app.cursor_position() {
+        if let Ok(index) = monitor_index_at(app, cursor.x as i32, cursor.y as i32) {
+            if let Some(win) = windows.get(index) {
+                let _ = win.set_focus();
+            }
+        }
+    }
+    app.emit("overlay-mode", serde_json::json!({ "purpose": purpose }))
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn show_overlay(app: AppHandle) -> Result<(), String> {
-    crate::discard_any_active_recording(&app);
-    crate::set_capture_tray_icon(&app, crate::CaptureIconState::Progress);
-    let win = app.get_webview_window("overlay").ok_or("overlay window missing")?;
-    resize_overlay_to_monitor(&win)?;
-    win.show().map_err(|e| e.to_string())?;
-    win.set_focus().map_err(|e| e.to_string())?;
-    app.emit_to("overlay", "overlay-mode", serde_json::json!({ "purpose": "screenshot" }))
-        .map_err(|e| e.to_string())
+    show_overlays(&app, "screenshot")
 }
 
 #[tauri::command]
 pub fn show_overlay_for_recording(app: AppHandle) -> Result<(), String> {
-    crate::discard_any_active_recording(&app);
-    crate::set_capture_tray_icon(&app, crate::CaptureIconState::Progress);
-    let win = app.get_webview_window("overlay").ok_or("overlay window missing")?;
-    resize_overlay_to_monitor(&win)?;
-    win.show().map_err(|e| e.to_string())?;
-    win.set_focus().map_err(|e| e.to_string())?;
-    app.emit_to("overlay", "overlay-mode", serde_json::json!({ "purpose": "record" }))
-        .map_err(|e| e.to_string())
+    show_overlays(&app, "record")
 }
 
 // Called by the frontend at the explicit cancel points that don't otherwise
@@ -128,8 +187,45 @@ pub fn reset_capture_icon(app: AppHandle) {
 
 #[tauri::command]
 pub fn hide_overlay(app: AppHandle) -> Result<(), String> {
-    let win = app.get_webview_window("overlay").ok_or("overlay window missing")?;
-    win.hide().map_err(|e| e.to_string())
+    hide_all_overlays(&app);
+    Ok(())
+}
+
+// Called once the user has actually drawn a selection on one monitor's
+// overlay — every other monitor's overlay is no longer relevant at that
+// point, so hide them instead of leaving them dimming the rest of the
+// screen through the rest of the record flow.
+#[tauri::command]
+pub fn hide_other_overlays(window: WebviewWindow) -> Result<(), String> {
+    let app = window.app_handle();
+    for (label, win) in app.webview_windows() {
+        if label.starts_with(OVERLAY_LABEL_PREFIX) && label != *window.label() {
+            win.hide().map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+// Replaces the old `overlay-selection` event (which only ever came from a
+// single, always-primary-monitor overlay window) — `window` is
+// auto-supplied by Tauri as whichever overlay window actually invoked this,
+// so the target monitor is read directly off its label rather than guessed
+// at from cursor or window position.
+#[tauri::command]
+pub fn submit_area_capture(window: WebviewWindow, rect: CaptureRect) -> Result<(), String> {
+    let app = window.app_handle();
+    let index = overlay_monitor_index(&window)?;
+    match capture::capture_area_png(rect, index) {
+        Ok(bytes) => {
+            crate::open_editor_with_png(app, bytes);
+            Ok(())
+        }
+        Err(e) => {
+            crate::notify_capture_failed(app, &e);
+            crate::set_capture_tray_icon(app, crate::CaptureIconState::Default);
+            Err(e)
+        }
+    }
 }
 
 #[tauri::command]
@@ -195,11 +291,12 @@ pub async fn trim_and_upload(
 
 #[tauri::command]
 pub fn start_recording_command(
-    app: AppHandle,
+    window: WebviewWindow,
     state: State<RecordingState>,
     region: Option<CaptureRegion>,
     mic_enabled: bool,
 ) -> Result<String, String> {
+    let app = window.app_handle();
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
     if guard.is_some() {
         return Err("a recording is already in progress".to_string());
@@ -213,19 +310,36 @@ pub fn start_recording_command(
     // crash monitor then (correctly, but misleadingly) reports as a crash.
     let output_path =
         std::env::temp_dir().join(format!("snap-recording-{}.mp4", nanoid::nanoid!(8)));
-    let child = match recording::start_recording(region, mic_enabled, &output_path) {
+    // `window` is whichever overlay window the user actually drew the
+    // region on — its own label directly encodes the target monitor, so
+    // there's no need to guess from cursor or window position (which,
+    // triggered from the tray menu, would always land on the menu bar's
+    // monitor). Without this, recording always used whichever screen
+    // capture device avfoundation happened to list first while cropping
+    // with coordinates meant for a different monitor, producing an
+    // out-of-bounds crop that could hang ffmpeg on stop instead of actually
+    // finishing the recording.
+    let monitor_index = overlay_monitor_index(&window).unwrap_or(0);
+    let origin = window.outer_position().map_err(|e| e.to_string())?;
+    let tauri_monitors = app.available_monitors().map_err(|e| e.to_string())?;
+    let tauri_size = tauri_monitors.get(monitor_index).map(|m| *m.size());
+    eprintln!(
+        "start_recording_command: region={region:?}, monitor_index={monitor_index}, tauri_size={tauri_size:?}, {}",
+        capture::monitor_debug_info(monitor_index).unwrap_or_else(|e| format!("monitor_debug_info failed: {e}"))
+    );
+    let child = match recording::start_recording(region, mic_enabled, &output_path, monitor_index) {
         Ok(child) => child,
         Err(e) => {
-            crate::notify_capture_failed(&app, &format!("failed to start recording: {e}"));
-            crate::set_capture_tray_icon(&app, crate::CaptureIconState::Default);
+            crate::notify_capture_failed(app, &format!("failed to start recording: {e}"));
+            crate::set_capture_tray_icon(app, crate::CaptureIconState::Default);
             return Err(e);
         }
     };
-    *guard = Some((child, output_path.clone()));
+    *guard = Some((child, output_path.clone(), std::time::Instant::now()));
     drop(guard);
-    crate::set_recording_tray_state(&app, true);
+    crate::set_recording_tray_state(app, true);
     if let Some(region) = region {
-        crate::show_recording_controls(&app, region);
+        crate::show_recording_controls(app, region, (origin.x, origin.y));
     }
     let handle_monitor = app.clone();
     let monitor_path = output_path.clone();
@@ -238,8 +352,26 @@ pub fn start_recording_command(
 #[tauri::command]
 pub fn stop_recording_command(state: State<RecordingState>) -> Result<(), String> {
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-    let (child, _path) = guard.take().ok_or("no recording in progress")?;
-    recording::stop_recording(child)
+    let (child, _path, started_at) = guard.take().ok_or("no recording in progress")?;
+    recording::stop_recording(child, started_at)
+}
+
+// Called once a loaded video's natural dimensions are known, so the editor
+// window opens sized to fit the video (scaled to the current screen) instead
+// of always the fixed default size, which could force scrolling for large
+// recordings or leave a lot of empty space for small ones.
+#[tauri::command]
+pub fn resize_editor_window(app: AppHandle, width: f64, height: f64) -> Result<(), String> {
+    let win = app.get_webview_window("editor").ok_or("editor window missing")?;
+    // Deliberately not re-centering: NSWindow's center() centers on the
+    // *main* screen rather than the window's own screen if the window isn't
+    // considered fully settled at that exact moment (e.g. right after a
+    // resize) — which silently relocated the editor window to the primary
+    // monitor instead of wherever it actually was (e.g. a recording started
+    // on a secondary monitor), making it look like the window never opened.
+    // Resizing in place avoids that risk entirely.
+    win.set_size(Size::Logical(tauri::LogicalSize::new(width, height)))
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

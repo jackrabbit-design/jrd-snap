@@ -98,6 +98,16 @@ pub fn build_capture_args(
     args.push("yuv420p".into());
     args.push("-c:v".into());
     args.push("libx264".into());
+    // Without an explicit preset, libx264 defaults to "medium" — decoding
+    // and filtering a full 5K/Retina-resolution raw frame every tick just to
+    // crop it down is already substantial throughput, and "medium" adds
+    // enough encoder-side CPU cost on top that it can fall behind real time
+    // on a high-resolution display, building up a backlog that then takes
+    // far longer than expected to drain when asked to stop. "ultrafast"
+    // trades bitrate efficiency for encoder speed, which matters far more
+    // here than file size.
+    args.push("-preset".into());
+    args.push("ultrafast".into());
 
     if mic_enabled {
         args.push("-c:a".into());
@@ -109,12 +119,21 @@ pub fn build_capture_args(
 }
 
 /// Parses avfoundation's `-list_devices true` stderr text for the index of
-/// the first "Capture screen" entry, e.g. a line like:
+/// the "Capture screen {target}" entry, e.g. a line like:
 /// `[AVFoundation indev @ 0x...] [4] Capture screen 0`
+/// `target` is which monitor to record — avfoundation numbers its screen
+/// devices "Capture screen 0", "Capture screen 1", etc. in the same order
+/// macOS's own display list enumerates them, which lines up with the
+/// monitor index used elsewhere (`commands::monitor_index_at`). Falls back
+/// to the first "Capture screen" entry found if the exact target isn't
+/// present (e.g. a monitor was unplugged between selecting the area and
+/// starting the recording) rather than failing outright.
 /// Extracted as a pure function so it can be unit tested against real,
 /// captured output without spawning ffmpeg.
 #[cfg(target_os = "macos")]
-fn parse_screen_device_index(stderr_text: &str) -> Result<String, String> {
+fn parse_screen_device_index(stderr_text: &str, target: usize) -> Result<String, String> {
+    let wanted = format!("Capture screen {target}");
+    let mut fallback: Option<String> = None;
     for line in stderr_text.lines() {
         if let Some(bracket_end) = line.find(']') {
             let after_first_bracket = &line[bracket_end + 1..];
@@ -123,18 +142,21 @@ fn parse_screen_device_index(stderr_text: &str) -> Result<String, String> {
             {
                 if start < end {
                     let index = &after_first_bracket[start + 1..end];
-                    let rest = &after_first_bracket[end + 1..];
-                    if rest.trim_start().starts_with("Capture screen") {
+                    let name = after_first_bracket[end + 1..].trim();
+                    if name == wanted {
                         return Ok(index.to_string());
+                    }
+                    if fallback.is_none() && name.starts_with("Capture screen") {
+                        fallback = Some(index.to_string());
                     }
                 }
             }
         }
     }
-    Err("no \"Capture screen\" device found in avfoundation device list".to_string())
+    fallback.ok_or_else(|| "no \"Capture screen\" device found in avfoundation device list".to_string())
 }
 
-/// Discovers the real avfoundation device index for the primary screen by
+/// Discovers the real avfoundation device index for the given monitor by
 /// running `ffmpeg -f avfoundation -list_devices true -i ""` and parsing its
 /// stderr. This command always exits non-zero (it errors out after printing
 /// the device list because "" is not a valid input), so the exit status is
@@ -147,16 +169,26 @@ fn parse_screen_device_index(stderr_text: &str) -> Result<String, String> {
 /// silently fail discovery and fall back to the hardcoded (likely wrong)
 /// index below.
 #[cfg(target_os = "macos")]
-pub fn find_macos_screen_device_index() -> Result<String, String> {
+pub fn find_macos_screen_device_index(target: usize) -> Result<String, String> {
     let output = std::process::Command::new(ffmpeg_path())
         .args(["-f", "avfoundation", "-list_devices", "true", "-i", ""])
         .output()
         .map_err(|e| e.to_string())?;
     let stderr_text = String::from_utf8_lossy(&output.stderr);
-    parse_screen_device_index(&stderr_text)
+    eprintln!(
+        "avfoundation device list (target monitor {target}):\n{}",
+        stderr_text
+            .lines()
+            .filter(|l| l.contains("Capture screen"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    let result = parse_screen_device_index(&stderr_text, target);
+    eprintln!("resolved avfoundation device index: {result:?}");
+    result
 }
 
-pub struct RecordingState(pub Mutex<Option<(FfmpegChild, PathBuf)>>);
+pub struct RecordingState(pub Mutex<Option<(FfmpegChild, PathBuf, std::time::Instant)>>);
 
 impl Default for RecordingState {
     fn default() -> Self {
@@ -168,9 +200,10 @@ pub fn start_recording(
     region: Option<CaptureRegion>,
     mic_enabled: bool,
     output_path: &std::path::Path,
+    monitor_index: usize,
 ) -> Result<FfmpegChild, String> {
     #[cfg(target_os = "macos")]
-    let screen_device_index = match find_macos_screen_device_index() {
+    let screen_device_index = match find_macos_screen_device_index(monitor_index) {
         Ok(index) => index,
         Err(e) => {
             eprintln!(
@@ -180,6 +213,11 @@ pub fn start_recording(
             "1".to_string()
         }
     };
+    // Non-macOS capture backends don't select a screen by device index the
+    // same way (see the `gdigrab`/Windows path below), so this parameter
+    // only matters on macOS.
+    #[cfg(not(target_os = "macos"))]
+    let _ = monitor_index;
     #[cfg(not(target_os = "macos"))]
     let screen_device_index = "1".to_string();
 
@@ -193,19 +231,77 @@ pub fn start_recording(
     }
 
     let args = build_capture_args(region, mic_enabled, output_path, &screen_device_index);
-    FfmpegCommand::new()
+    eprintln!("starting ffmpeg: {}", args.join(" "));
+    let mut child = FfmpegCommand::new()
         .args(&args)
         .spawn()
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    // ffmpeg_sidecar pipes stdout/stderr unconditionally (Stdio::piped()),
+    // and ffmpeg writes continuous progress output to stderr — if nothing
+    // ever reads it, the OS pipe buffer fills within a few seconds of any
+    // real recording and ffmpeg blocks trying to write to it. At that point
+    // it's fully deadlocked: it never gets back to checking stdin, so the
+    // quit signal in `stop_recording` is never even seen, no matter how
+    // long that waits. `.iter()`'s underlying channel is a zero-capacity
+    // rendezvous (see ffmpeg_sidecar's `sync_channel(0)`), so the events
+    // must be actively consumed for the life of the process, not just
+    // requested once — merely calling `.iter()` and dropping the result
+    // would still block the reader thread on its first send.
+    if let Ok(events) = child.iter() {
+        std::thread::spawn(move || {
+            for _event in events {}
+        });
+    }
+
+    Ok(child)
 }
 
-pub fn stop_recording(mut child: FfmpegChild) -> Result<(), String> {
+// avfoundation's screen-capture input takes a moment to actually start
+// producing frames after ffmpeg opens it; sending the quit signal before
+// that finishes appears to make ffmpeg ignore it and never exit gracefully
+// (only the force-kill fallback below recovers) — every real hang observed
+// so far was stopped within a couple of seconds of starting. Delaying the
+// quit signal itself, rather than just relying on the kill fallback, keeps
+// a quick start-then-stop from producing a forcibly-truncated file when a
+// clean one was achievable just by waiting a moment longer.
+const MIN_RECORDING_DURATION: std::time::Duration = std::time::Duration::from_secs(2);
+
+pub fn stop_recording(mut child: FfmpegChild, started_at: std::time::Instant) -> Result<(), String> {
+    let elapsed = started_at.elapsed();
+    if elapsed < MIN_RECORDING_DURATION {
+        std::thread::sleep(MIN_RECORDING_DURATION - elapsed);
+    }
+
     // ffmpeg's documented graceful-quit signal: sending "q" over stdin
     // finalizes the output container (writes a valid MP4 moov atom) instead
     // of leaving a truncated/unplayable file, which a hard kill would risk.
     child.quit().map_err(|e| e.to_string())?;
-    child.wait().map_err(|e| e.to_string())?;
-    Ok(())
+
+    // This runs synchronously on the same thread that's handling the stop
+    // request, so an unbounded `wait()` here means a stuck ffmpeg process
+    // freezes the whole app — including Quit — until it's killed from
+    // outside. Give it a few seconds to exit on its own (now that stderr is
+    // actually drained — see `start_recording` — it should take well under
+    // one), then force-kill rather than block forever; a truncated output
+    // file is a far better failure mode than an unresponsive app.
+    let wait_start = std::time::Instant::now();
+    let deadline = wait_start + std::time::Duration::from_secs(5);
+    loop {
+        match child.as_inner_mut().try_wait().map_err(|e| e.to_string())? {
+            Some(_) => {
+                eprintln!("ffmpeg exited {:.1}s after the quit signal", wait_start.elapsed().as_secs_f32());
+                return Ok(());
+            }
+            None if std::time::Instant::now() >= deadline => {
+                eprintln!("ffmpeg still hadn't exited {:.1}s after the quit signal; killing it", wait_start.elapsed().as_secs_f32());
+                child.kill().map_err(|e| e.to_string())?;
+                child.wait().map_err(|e| e.to_string())?;
+                return Ok(());
+            }
+            None => std::thread::sleep(std::time::Duration::from_millis(100)),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -268,7 +364,24 @@ Error opening input files: Input/output error\n";
     #[cfg(target_os = "macos")]
     #[test]
     fn parses_screen_device_index_from_real_avfoundation_output() {
-        let index = parse_screen_device_index(SAMPLE_AVFOUNDATION_STDERR).unwrap();
+        let index = parse_screen_device_index(SAMPLE_AVFOUNDATION_STDERR, 0).unwrap();
+        assert_eq!(index, "4");
+    }
+
+    // The exact case this whole target-matching scheme exists for: picking
+    // the SECOND monitor's device must not just return the first "Capture
+    // screen" line found.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn parses_the_requested_screen_not_just_the_first_one() {
+        let index = parse_screen_device_index(SAMPLE_AVFOUNDATION_STDERR, 1).unwrap();
+        assert_eq!(index, "5");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn falls_back_to_first_capture_screen_when_target_is_missing() {
+        let index = parse_screen_device_index(SAMPLE_AVFOUNDATION_STDERR, 7).unwrap();
         assert_eq!(index, "4");
     }
 
@@ -276,7 +389,7 @@ Error opening input files: Input/output error\n";
     #[test]
     fn errs_when_no_capture_screen_line_is_present() {
         let text = "[AVFoundation indev @ 0x0] [0] MacBook Pro Camera\n";
-        assert!(parse_screen_device_index(text).is_err());
+        assert!(parse_screen_device_index(text, 0).is_err());
     }
 }
 
@@ -287,7 +400,7 @@ mod manual_discovery_check {
     #[test]
     #[ignore]
     fn real_discovery_returns_the_actual_screen_index() {
-        let index = find_macos_screen_device_index().unwrap();
+        let index = find_macos_screen_device_index(0).unwrap();
         eprintln!("discovered index: {index}");
         assert_eq!(index, "4");
     }
@@ -303,9 +416,10 @@ mod manual_e2e_check {
     #[ignore]
     fn real_start_and_stop_produces_a_playable_mp4() {
         let output_path = std::env::temp_dir().join("snap-manual-e2e-test.mp4");
-        let child = start_recording(None, false, &output_path).unwrap();
+        let started_at = std::time::Instant::now();
+        let child = start_recording(None, false, &output_path, 0).unwrap();
         sleep(Duration::from_secs(3));
-        stop_recording(child).unwrap();
+        stop_recording(child, started_at).unwrap();
 
         let metadata = std::fs::metadata(&output_path).unwrap();
         eprintln!("output file: {} ({} bytes)", output_path.display(), metadata.len());

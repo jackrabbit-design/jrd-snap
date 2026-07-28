@@ -1,6 +1,31 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { resizeEditorWindow } from "../../lib/api";
 import type { TrimState } from "./trimState";
 import { setInPoint, setOutPoint } from "./trimState";
+
+// Space the rest of the trimmer UI (the "Save & Upload" header row, the
+// video's own padding, the dual-range slider, and the in/out/duration
+// labels) takes up around the video itself — reserved so the window is
+// sized to fit all of it, not just the video.
+const CHROME_HEIGHT = 170;
+const WINDOW_MARGIN = 80;
+const MIN_WIDTH = 480;
+const MIN_HEIGHT = 320;
+
+// Scales the video's natural size down to fit comfortably on the current
+// screen (leaving room for the reserved chrome above/below it), so the
+// editor window opens showing the whole video with no scrolling — instead
+// of always the fixed default window size, which could be far too small for
+// a large recording or leave a lot of empty space around a small one.
+function fitWindowSize(videoWidth: number, videoHeight: number): { width: number; height: number } {
+  const maxWidth = window.screen.availWidth - WINDOW_MARGIN;
+  const maxHeight = window.screen.availHeight - WINDOW_MARGIN - CHROME_HEIGHT;
+  const scale = Math.min(1, maxWidth / videoWidth, maxHeight / videoHeight);
+  return {
+    width: Math.max(MIN_WIDTH, Math.round(videoWidth * scale)),
+    height: Math.max(MIN_HEIGHT, Math.round(videoHeight * scale) + CHROME_HEIGHT),
+  };
+}
 
 interface Props {
   videoSrc: string;
@@ -27,9 +52,14 @@ const VideoTrimmer = forwardRef<VideoTrimmerHandle, Props>(function VideoTrimmer
   const stopAtCleanupRef = useRef<(() => void) | null>(null);
 
   function handleLoadedMetadata() {
-    const duration = videoRef.current?.duration ?? 0;
+    const video = videoRef.current;
+    const duration = video?.duration ?? 0;
     if (duration > 0 && trim.duration === 0) {
       onTrimChange({ duration, inPoint: 0, outPoint: duration });
+    }
+    if (video && video.videoWidth > 0 && video.videoHeight > 0) {
+      const { width, height } = fitWindowSize(video.videoWidth, video.videoHeight);
+      resizeEditorWindow(width, height).catch((e) => console.error("failed to resize editor window", e));
     }
   }
 

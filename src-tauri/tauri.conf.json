@@ -27,19 +27,6 @@
         "visible": false
       },
       {
-        "label": "overlay",
-        "title": "Snap Overlay",
-        "url": "index.html#/overlay",
-        "width": 1,
-        "height": 1,
-        "visible": false,
-        "decorations": false,
-        "transparent": true,
-        "shadow": false,
-        "alwaysOnTop": true,
-        "skipTaskbar": true
-      },
-      {
         "label": "editor",
         "title": "Snap Editor",
         "url": "index.html#/editor",

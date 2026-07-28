@@ -391,6 +391,7 @@ input[type="checkbox"]:checked::after {
   display: flex;
   flex-direction: column;
   height: 100%;
+  overflow: hidden;
   background: var(--bg);
 }
 
@@ -592,15 +593,22 @@ input[type="color"]::-webkit-color-swatch-wrapper {
 .video-trimmer {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
   gap: var(--space-3);
   padding: var(--space-4);
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  overflow: hidden;
 }
 
 .video-preview {
+  flex: 1;
+  min-height: 0;
   max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
   border-radius: var(--radius-sm);
 }
 

@@ -114,8 +114,8 @@ pub(crate) fn notify_capture_failed(app: &tauri::AppHandle, e: &str) {
 pub(crate) fn discard_any_active_recording(app: &tauri::AppHandle) {
     let state = app.state::<recording::RecordingState>();
     let entry = state.0.lock().unwrap().take();
-    if let Some((child, path)) = entry {
-        let _ = recording::stop_recording(child);
+    if let Some((child, path, started_at)) = entry {
+        let _ = recording::stop_recording(child, started_at);
         let _ = std::fs::remove_file(&path);
         set_recording_tray_state(app, false);
         hide_recording_controls(app);
@@ -128,24 +128,22 @@ pub(crate) fn discard_any_active_recording(app: &tauri::AppHandle) {
 // window — a click-through window never receives the mouse-enter/leave
 // events needed to toggle click-through off over just the button, so the
 // button would be unclickable if it lived there instead.
-pub(crate) fn show_recording_controls(app: &tauri::AppHandle, region: recording::CaptureRegion) {
+pub(crate) fn show_recording_controls(
+    app: &tauri::AppHandle,
+    region: recording::CaptureRegion,
+    origin: (i32, i32),
+) {
     let Some(win) = app.get_webview_window("recording-controls") else {
         eprintln!("recording-controls window missing");
         return;
     };
     // `region.x`/`region.y` are relative to the overlay window the user drew
     // the selection in (see OverlayApp.tsx), not the desktop's global
-    // coordinate space that `set_position` expects — on the primary monitor
-    // those happen to be the same thing (both start at 0,0), which is why
-    // this only showed up as a bug on a secondary monitor. The overlay is
-    // still showing (and still positioned over the target monitor) at this
-    // point, so its own on-screen position gives that monitor's global
-    // origin to offset by.
-    let (origin_x, origin_y) = app
-        .get_webview_window("overlay")
-        .and_then(|overlay| overlay.outer_position().ok())
-        .map(|pos| (pos.x, pos.y))
-        .unwrap_or((0, 0));
+    // coordinate space that `set_position` expects — `origin` is that
+    // overlay window's own on-screen position (still showing, over the
+    // target monitor, at the moment the caller reads it), giving the
+    // monitor's global origin to offset by.
+    let (origin_x, origin_y) = origin;
     let width = region.width as i32;
     let height = 100i32;
     let x = origin_x + region.x;
@@ -204,8 +202,8 @@ pub(crate) fn monitor_recording_for_crash(app: &tauri::AppHandle, expected_path:
         let mut guard = state.0.lock().unwrap();
         match guard.as_mut() {
             None => return, // stopped or discarded elsewhere — normal exit, nothing to do
-            Some((_child, path)) if *path != expected_path => return, // superseded by a different recording
-            Some((child, _path)) => match child.as_inner_mut().try_wait() {
+            Some((_child, path, _started_at)) if *path != expected_path => return, // superseded by a different recording
+            Some((child, _path, _started_at)) => match child.as_inner_mut().try_wait() {
                 Ok(None) => continue, // still running, poll again
                 Ok(Some(_)) | Err(_) => {
                     // Process exited on its own (or we can't even check) without
@@ -339,6 +337,8 @@ pub fn run() {
             commands::show_overlay,
             commands::show_overlay_for_recording,
             commands::hide_overlay,
+            commands::hide_other_overlays,
+            commands::submit_area_capture,
             commands::capture_full_screen,
             commands::capture_area,
             commands::upload_file,
@@ -346,6 +346,7 @@ pub fn run() {
             commands::start_recording_command,
             commands::stop_recording_command,
             commands::reopen_last_capture,
+            commands::resize_editor_window,
             commands::get_last_capture,
             commands::read_video_base64,
             commands::record_capture_history,
@@ -361,6 +362,20 @@ pub fn run() {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             tray::build_tray(app.handle())?;
+
+            // Create (but don't show) the per-monitor overlay windows now,
+            // rather than lazily on first use. Each is a fresh webview that
+            // needs a moment to load and register its own event listeners
+            // — creating them on first use and emitting "overlay-mode"
+            // straight after meant that very first click could fire the
+            // event before the brand-new window's listener was ready,
+            // silently losing it and leaving the overlay stuck on its
+            // default ("screenshot") purpose even when recording was
+            // requested. Creating them eagerly at startup gives them the
+            // entire rest of the launch sequence to finish loading.
+            if let Err(e) = commands::ensure_overlay_windows(app.handle()) {
+                eprintln!("failed to pre-create overlay windows: {e}");
+            }
 
             let handle_ffmpeg = app.handle().clone();
             std::thread::spawn(move || {
@@ -438,35 +453,16 @@ pub fn run() {
                 }
             });
 
-            if let Some(overlay_window) = app.get_webview_window("overlay") {
-                let handle3 = app.handle().clone();
-                let overlay_window3 = overlay_window.clone();
-                overlay_window.listen("overlay-selection", move |event| {
-                    match serde_json::from_str::<capture::CaptureRect>(event.payload()) {
-                        // The overlay window was already resized to exactly
-                        // cover the target monitor (see
-                        // `resize_overlay_to_monitor`), so its own position
-                        // tells us which monitor to actually capture from.
-                        Ok(rect) => {
-                            let result = overlay_window3
-                                .outer_position()
-                                .map_err(|e| e.to_string())
-                                .and_then(|pos| commands::monitor_index_at(overlay_window3.app_handle(), pos.x, pos.y))
-                                .and_then(|index| capture::capture_area_png(rect, index));
-                            match result {
-                                Ok(bytes) => open_editor_with_png(&handle3, bytes),
-                                Err(e) => {
-                                    notify_capture_failed(&handle3, &e);
-                                    set_capture_tray_icon(&handle3, CaptureIconState::Default);
-                                }
-                            }
-                        }
-                        Err(e) => eprintln!("failed to parse overlay-selection payload: {e}"),
-                    }
-                });
-            } else {
-                eprintln!("overlay window missing; overlay-selection listener not registered");
-            }
+            // Area-selection capture used to be finished via an
+            // "overlay-selection" event listened for on a single, always-
+            // primary-monitor overlay window here. Overlays are now created
+            // dynamically, one per monitor (see `commands::show_overlays`),
+            // so that flow is instead a plain command
+            // (`commands::submit_area_capture`) invoked directly from
+            // whichever overlay window the user actually used — Tauri
+            // supplies that specific window to the handler automatically,
+            // which a window-scoped event listener registered once here
+            // upfront couldn't do for windows that don't exist yet.
 
             let handle4 = app.handle().clone();
             app.listen("trigger-record-area", move |_event| {
@@ -479,10 +475,10 @@ pub fn run() {
             app.listen("trigger-stop-recording", move |_event| {
                 let state = handle7.state::<recording::RecordingState>();
                 let entry = state.0.lock().unwrap().take();
-                if let Some((child, output_path)) = entry {
+                if let Some((child, output_path, started_at)) = entry {
                     set_recording_tray_state(&handle7, false);
                     hide_recording_controls(&handle7);
-                    match recording::stop_recording(child) {
+                    match recording::stop_recording(child, started_at) {
                         Ok(()) => open_editor_with_video(&handle7, &output_path),
                         Err(e) => {
                             notify_capture_failed(&handle7, &format!("failed to stop recording: {e}"));

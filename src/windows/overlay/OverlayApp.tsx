@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { emit, listen } from "@tauri-apps/api/event";
+import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { startRecording } from "../../lib/api";
@@ -133,6 +133,12 @@ export default function OverlayApp() {
       height: Math.round(height * dpr),
     };
     if (purpose === "record") {
+      // Overlays are shown on every monitor at once (there's no way to know
+      // in advance which one the user means to use), so once they've
+      // actually drawn a region here, every other monitor's overlay is no
+      // longer relevant — hide them immediately rather than leaving them
+      // dimming the rest of the screen through the confirm step.
+      await invoke("hide_other_overlays");
       setRecordRegion(rect);
       setRecordDisplayRegion({ left: x, top: y, width, height });
       setPhase("confirm");
@@ -144,7 +150,7 @@ export default function OverlayApp() {
     // include the overlay's own dimming, making everything look darker.
     await invoke("hide_overlay");
     await new Promise((resolve) => setTimeout(resolve, 150));
-    await emit("overlay-selection", rect);
+    await invoke("submit_area_capture", { rect });
   }
 
   async function handleKeyDown(e: React.KeyboardEvent) {

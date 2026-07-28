@@ -53,6 +53,28 @@ fn nth_monitor_or_primary(index: usize) -> Result<xcap::Monitor, String> {
         .ok_or_else(|| "no monitor found".to_string())
 }
 
+// Diagnostic only: reports the monitor's own claimed size (`xcap::Monitor`'s
+// x/y/width/height, native units — points on macOS, physical pixels on
+// Windows) alongside the actual pixel dimensions of a real capture, so a
+// recording crop rect computed from some other coordinate space (Tauri's
+// `available_monitors()`, a webview's own devicePixelRatio, ...) can be
+// checked against real ground truth instead of another guess.
+pub fn monitor_debug_info(monitor_index: usize) -> Result<String, String> {
+    let monitor = nth_monitor_or_primary(monitor_index)?;
+    let claimed = (
+        monitor.x().unwrap_or(-1),
+        monitor.y().unwrap_or(-1),
+        monitor.width().unwrap_or(0),
+        monitor.height().unwrap_or(0),
+    );
+    let scale = monitor.scale_factor().unwrap_or(-1.0);
+    let img = monitor.capture_image().map_err(|e| e.to_string())?;
+    Ok(format!(
+        "xcap claims x={} y={} w={} h={} scale_factor={}; actual capture_image() is {}x{}",
+        claimed.0, claimed.1, claimed.2, claimed.3, scale, img.width(), img.height(),
+    ))
+}
+
 pub fn capture_full_screen_png(monitor_index: usize) -> Result<Vec<u8>, String> {
     let monitor = nth_monitor_or_primary(monitor_index)?;
     let img = monitor.capture_image().map_err(|e| e.to_string())?;

@@ -56,6 +56,10 @@ export function showOverlayForRecording(): Promise<void> {
   return invoke("show_overlay_for_recording");
 }
 
+export function resizeEditorWindow(width: number, height: number): Promise<void> {
+  return invoke("resize_editor_window", { width, height });
+}
+
 export function trimAndUpload(inputPath: string, inPoint: number, outPoint: number): Promise<string> {
   return invoke("trim_and_upload", { inputPath, inPoint, outPoint });
 }
