@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
@@ -34,14 +34,82 @@ function base64ToBlobUrl(base64: string, mimeType: string): string {
   return URL.createObjectURL(new Blob([bytes], { type: mimeType }));
 }
 
-const UPLOAD_SHORTCUT_LABEL = navigator.platform.toLowerCase().includes("mac") ? "⌘E" : "Ctrl+E";
+const IS_MAC = navigator.platform.toLowerCase().includes("mac");
+const MODIFIER_KEY_LABEL = IS_MAC ? "⌘" : "Ctrl+";
+const UPLOAD_SHORTCUT_LABEL = `${MODIFIER_KEY_LABEL}E`;
+
+// Undo/redo for `state` (shapes/tool/selection) — kept as a reducer rather
+// than plain useState + a ref-tracked undo stack because that first version
+// had a real race: undo()/redo() read `history`/`future`/`state` straight
+// out of the render closure, so two rapid calls (key-repeat holding
+// Cmd+Z, or double-clicking Undo) could both read the same stale array
+// and pop the same entry twice — the stack silently shrank by two while
+// state only moved back by one, eventually running dry early or skipping
+// steps. A reducer's actions are always applied against the guaranteed-
+// latest state, in the order dispatched, so that whole class of race is
+// gone regardless of how fast dispatch is called.
+interface HistoryState {
+  past: EditorState[];
+  present: EditorState;
+  future: EditorState[];
+}
+
+type HistoryAction =
+  | { type: "set"; updater: (prev: EditorState) => EditorState; suppressed: boolean }
+  // Snapshots the state right before a continuous edit (dragging out a new
+  // shape) begins, so the many "set"s while it's in progress (suppressed)
+  // can update `present` without each one being its own undo step.
+  | { type: "begin" }
+  | { type: "undo" }
+  | { type: "redo" }
+  // Replaces everything and clears both stacks — a new capture loaded, or
+  // (see handleApplyCrop) a crop applied. Crop changes the base image
+  // itself, which isn't part of this state, so undoing shapes back past a
+  // crop would leave annotations misaligned with an image that never
+  // reverted — simplest correct answer is it just isn't undoable.
+  | { type: "reset"; state: EditorState };
+
+function historyReducer(hist: HistoryState, action: HistoryAction): HistoryState {
+  switch (action.type) {
+    case "begin":
+      return { past: [...hist.past, hist.present], present: hist.present, future: [] };
+    case "set": {
+      const next = action.updater(hist.present);
+      // Suppressed (mid-continuous-edit), or a pure selection/tool change
+      // (every reducer in toolState.ts either replaces the `shapes` array
+      // for a real content change, or leaves the same reference alone) —
+      // either way, update present without pushing a checkpoint.
+      if (action.suppressed || next.shapes === hist.present.shapes) {
+        return { ...hist, present: next };
+      }
+      return { past: [...hist.past, hist.present], present: next, future: [] };
+    }
+    case "undo": {
+      if (hist.past.length === 0) return hist;
+      return {
+        past: hist.past.slice(0, -1),
+        present: hist.past[hist.past.length - 1],
+        future: [hist.present, ...hist.future],
+      };
+    }
+    case "redo": {
+      if (hist.future.length === 0) return hist;
+      return {
+        past: [...hist.past, hist.present],
+        present: hist.future[0],
+        future: hist.future.slice(1),
+      };
+    }
+    case "reset":
+      return { past: [], present: action.state, future: [] };
+  }
+}
 
 export default function EditorApp() {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [videoPath, setVideoPath] = useState<string | null>(null);
   const [trim, setTrim] = useState<TrimState>(initialTrimState(0));
-  const [state, setState] = useState<EditorState>(initialState);
   const [color, setColor] = useState(() => localStorage.getItem("editor-color") ?? "#ff0000");
   const [strokeWidth, setStrokeWidth] = useState(() => Number(localStorage.getItem("editor-stroke-width")) || 3);
   const [uploading, setUploading] = useState(false);
@@ -51,6 +119,62 @@ export default function EditorApp() {
   const stageRef = useRef<Konva.Stage>(null);
   const trimmerRef = useRef<VideoTrimmerHandle>(null);
   const videoObjectUrlRef = useRef<string | null>(null);
+
+  // Undo/redo over `state` (shapes/tool/selection) only — not imageSrc, so a
+  // crop (which regenerates the base image) clears this instead of being
+  // undoable through it; see handleApplyCrop and historyReducer's "reset".
+  const [hist, dispatch] = useReducer(historyReducer, { past: [], present: initialState, future: [] });
+  const state = hist.present;
+  // Set for the duration of drawing a brand-new shape (mousedown through
+  // mouseup) so its many intermediate mousemove updates collapse into one
+  // undo step instead of one per pixel dragged. Read at dispatch time (not
+  // closed over inside the reducer) so it reflects "was a continuous edit
+  // in progress right when this particular change happened", independent
+  // of when React actually gets around to running the reducer.
+  const suppressHistoryRef = useRef(false);
+
+  function setState(updater: EditorState | ((prev: EditorState) => EditorState)) {
+    dispatch({
+      type: "set",
+      updater: typeof updater === "function" ? updater : () => updater,
+      suppressed: suppressHistoryRef.current,
+    });
+  }
+
+  function resetState(newState: EditorState) {
+    dispatch({ type: "reset", state: newState });
+  }
+
+  function beginContinuousEdit() {
+    suppressHistoryRef.current = true;
+    dispatch({ type: "begin" });
+  }
+
+  function endContinuousEdit() {
+    suppressHistoryRef.current = false;
+  }
+
+  function undo() {
+    dispatch({ type: "undo" });
+  }
+
+  function redo() {
+    dispatch({ type: "redo" });
+  }
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (!videoSrc && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+        const target = e.target as HTMLElement | null;
+        if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  });
 
   useEffect(() => {
     if (!state.selectedId) return;
@@ -78,8 +202,8 @@ export default function EditorApp() {
   useEffect(() => {
     const unlisten = listen<string>("editor-load-image", (event) => {
       setImageSrc(`data:image/png;base64,${event.payload}`);
-      setState(initialState);
       setVideoSrc(null);
+      resetState(initialState);
     });
     return () => {
       unlisten.then((f) => f());
@@ -136,6 +260,7 @@ export default function EditorApp() {
       setImageSrc(null);
       setTrim(initialTrimState(0));
       loadVideoFromPath(event.payload);
+      resetState(initialState);
     });
     return () => {
       unlisten.then((f) => f());
@@ -242,14 +367,13 @@ export default function EditorApp() {
       const ctx = canvas.getContext("2d")!;
       ctx.drawImage(img, -Math.min(x, x + width), -Math.min(y, y + height));
       setImageSrc(canvas.toDataURL("image/png"));
-      setState(
-        applyCrop(state, {
-          x: Math.min(x, x + width),
-          y: Math.min(y, y + height),
-          width: Math.abs(width),
-          height: Math.abs(height),
-        }),
-      );
+      const cropped = applyCrop(state, {
+        x: Math.min(x, x + width),
+        y: Math.min(y, y + height),
+        width: Math.abs(width),
+        height: Math.abs(height),
+      });
+      resetState(cropped);
     };
     img.src = imageSrc;
   }
@@ -351,6 +475,24 @@ export default function EditorApp() {
           onTextBackgroundChange={handleTextBackgroundChange}
         />
         <div className="editor-actions">
+          <button
+            type="button"
+            className="button"
+            title={`Undo (${MODIFIER_KEY_LABEL}Z)`}
+            onClick={undo}
+            disabled={hist.past.length === 0}
+          >
+            Undo
+          </button>
+          <button
+            type="button"
+            className="button"
+            title={`Redo (${MODIFIER_KEY_LABEL}Shift+Z)`}
+            onClick={redo}
+            disabled={hist.future.length === 0}
+          >
+            Redo
+          </button>
           {state.shapes.some((s) => s.type === "crop") && (
             <button type="button" className="button" onClick={handleApplyCrop}>
               Apply Crop
@@ -378,6 +520,8 @@ export default function EditorApp() {
           strokeWidth={strokeWidth}
           onStateChange={setState}
           onScaleChange={setDisplayScale}
+          onBeginContinuousEdit={beginContinuousEdit}
+          onEndContinuousEdit={endContinuousEdit}
         />
       </div>
     </div>

@@ -41,9 +41,13 @@ function seedFromId(id: string): number {
 function EndpointHandles({
   points,
   onPointsChange,
+  onBeginContinuousEdit,
+  onEndContinuousEdit,
 }: {
   points: number[];
   onPointsChange: (points: number[]) => void;
+  onBeginContinuousEdit?: () => void;
+  onEndContinuousEdit?: () => void;
 }) {
   return (
     <>
@@ -55,7 +59,9 @@ function EndpointHandles({
         stroke="#fff"
         strokeWidth={1}
         draggable
+        onDragStart={() => onBeginContinuousEdit?.()}
         onDragMove={(e) => onPointsChange([e.target.x(), e.target.y(), points[2], points[3]])}
+        onDragEnd={() => onEndContinuousEdit?.()}
       />
       <Circle
         x={points[2]}
@@ -65,7 +71,9 @@ function EndpointHandles({
         stroke="#fff"
         strokeWidth={1}
         draggable
+        onDragStart={() => onBeginContinuousEdit?.()}
         onDragMove={(e) => onPointsChange([points[0], points[1], e.target.x(), e.target.y()])}
+        onDragEnd={() => onEndContinuousEdit?.()}
       />
     </>
   );
@@ -259,6 +267,13 @@ interface Props {
   // Reports the current fit-to-panel scale (<=1) so the parent can export at
   // full native resolution regardless of how small the on-screen display is.
   onScaleChange?: (scale: number) => void;
+  // Bracket a new shape being drawn out (mousedown through mouseup), so the
+  // parent's undo history can treat the whole drag as one step instead of
+  // one step per intermediate mousemove — dragging an *existing* shape
+  // doesn't need this since Konva only reports its position once, on
+  // release, not continuously.
+  onBeginContinuousEdit?: () => void;
+  onEndContinuousEdit?: () => void;
 }
 
 let nextId = 0;
@@ -268,7 +283,7 @@ function newId(): string {
 }
 
 const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanvas(
-  { imageSrc, state, color, strokeWidth, onStateChange, onScaleChange },
+  { imageSrc, state, color, strokeWidth, onStateChange, onScaleChange, onBeginContinuousEdit, onEndContinuousEdit },
   ref,
 ) {
   const [image] = useImage(imageSrc);
@@ -563,6 +578,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
       return;
     }
     drawing.current = id;
+    onBeginContinuousEdit?.();
     onStateChange(addShape(baseState, shape));
   }
 
@@ -594,8 +610,23 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
   }
 
   function handleMouseUp() {
-    drawing.current = null;
+    if (drawing.current) {
+      drawing.current = null;
+      onEndContinuousEdit?.();
+    }
   }
+
+  // Fallback for a mouseup that lands outside the Stage (releasing a fast
+  // drag past the canvas edge) — the Stage's own onMouseUp above wouldn't
+  // fire for that, leaving drawing.current (and the parent's undo-history
+  // suppression) stuck on indefinitely, silently swallowing every edit
+  // after it into one never-ending "still drawing" span. Runs after the
+  // Stage's own handler for the same physical event when it does fire, so
+  // it's a no-op then (drawing.current already null).
+  useEffect(() => {
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => window.removeEventListener("mouseup", handleMouseUp);
+  });
 
   // Layering is independent of draw/capture order: blur regions always sit
   // directly on top of the base image (otherwise a blur added after other
@@ -665,6 +696,8 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
                     <EndpointHandles
                       points={shape.points}
                       onPointsChange={(points) => onStateChange(updateShape(state, shape.id, { points }))}
+                      onBeginContinuousEdit={onBeginContinuousEdit}
+                      onEndContinuousEdit={onEndContinuousEdit}
                     />
                   )}
                 </Fragment>
@@ -698,6 +731,8 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
                     <EndpointHandles
                       points={shape.points}
                       onPointsChange={(points) => onStateChange(updateShape(state, shape.id, { points }))}
+                      onBeginContinuousEdit={onBeginContinuousEdit}
+                      onEndContinuousEdit={onEndContinuousEdit}
                     />
                   )}
                 </Fragment>
