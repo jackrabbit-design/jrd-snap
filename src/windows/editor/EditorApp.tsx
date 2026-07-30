@@ -27,6 +27,8 @@ function base64ToBlobUrl(base64: string, mimeType: string): string {
   return URL.createObjectURL(new Blob([bytes], { type: mimeType }));
 }
 
+const UPLOAD_SHORTCUT_LABEL = navigator.platform.toLowerCase().includes("mac") ? "⌘E" : "Ctrl+E";
+
 export default function EditorApp() {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
@@ -161,7 +163,7 @@ export default function EditorApp() {
 
   function handleApplyCrop() {
     const cropShape = state.shapes.find((s) => s.type === "crop");
-    if (!cropShape || !("width" in cropShape) || !imageSrc) return;
+    if (!cropShape || cropShape.type !== "crop" || !imageSrc) return;
     const { x, y, width, height } = cropShape;
     const img = new Image();
     img.onload = () => {
@@ -217,12 +219,31 @@ export default function EditorApp() {
     }
   }
 
+  // Cmd+E (mac) / Ctrl+E (win/linux) uploads from anywhere in the editor
+  // window, whether it's a video (trim) or image (annotation) capture.
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "e") return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      e.preventDefault();
+      if (uploading) return;
+      if (videoSrc) {
+        handleTrimAndUpload();
+      } else if (imageSrc) {
+        handleSaveAndUpload();
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  });
+
   if (videoSrc) {
     return (
       <div className="editor-page">
         <div className="editor-header-row editor-actions">
           <button type="button" className="button button-primary" onClick={handleTrimAndUpload} disabled={uploading}>
-            {uploading ? "Uploading…" : "Save & Upload"}
+            {uploading ? "Uploading…" : `Save & Upload (${UPLOAD_SHORTCUT_LABEL})`}
           </button>
         </div>
         {error && (
@@ -265,7 +286,7 @@ export default function EditorApp() {
             </button>
           )}
           <button type="button" className="button button-primary" onClick={handleSaveAndUpload} disabled={uploading}>
-            {uploading ? "Uploading…" : "Save & Upload"}
+            {uploading ? "Uploading…" : `Save & Upload (${UPLOAD_SHORTCUT_LABEL})`}
           </button>
         </div>
       </div>

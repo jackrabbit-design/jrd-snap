@@ -168,10 +168,11 @@ function usePixelatedImage(image: HTMLImageElement | undefined, pixelSize: numbe
   return pixelated;
 }
 
-function BlurRegion({ pixelatedImage, shape, selected, onSelect, onDragEnd, registerNode, onTransformEnd }: {
+function BlurRegion({ pixelatedImage, shape, selected, hovered, onSelect, onDragEnd, registerNode, onTransformEnd }: {
   pixelatedImage: HTMLCanvasElement;
   shape: BoxShape;
   selected: boolean;
+  hovered: boolean;
   onSelect: () => void;
   onDragEnd: (x: number, y: number) => void;
   registerNode: (node: Konva.Image | null) => void;
@@ -186,6 +187,7 @@ function BlurRegion({ pixelatedImage, shape, selected, onSelect, onDragEnd, regi
 
   return (
     <KonvaImage
+      id={shape.id}
       ref={registerNode}
       image={pixelatedImage}
       x={x}
@@ -205,7 +207,7 @@ function BlurRegion({ pixelatedImage, shape, selected, onSelect, onDragEnd, regi
       }}
       onDragEnd={(e) => onDragEnd(e.target.x(), e.target.y())}
       onTransformEnd={(e) => onTransformEnd(e.target as Konva.Image)}
-      {...(selected ? SELECTED_SHADOW : {})}
+      {...((selected || hovered) ? SELECTED_SHADOW : {})}
     />
   );
 }
@@ -236,7 +238,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
   const drawing = useRef<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [editingText, setEditingText] = useState<{ id: string; x: number; y: number; value: string; fontSize: number } | null>(
+  const [editingText, setEditingText] = useState<{ id: string; x: number; y: number; value: string; fontSize: number; width?: number } | null>(
     null,
   );
 
@@ -245,13 +247,20 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
   const shapeNodeRefs = useRef<Record<string, Konva.Node>>({});
   const transformerRef = useRef<Konva.Transformer>(null);
 
+  // Hovering an existing annotation makes it behave like the select tool is
+  // active for that annotation specifically, regardless of which tool is
+  // actually selected — so switching tools to draw something else doesn't
+  // stop you from nudging/resizing a shape you're pointing at.
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+
   useEffect(() => {
     const transformer = transformerRef.current;
     if (!transformer) return;
     const node = state.selectedId ? shapeNodeRefs.current[state.selectedId] : undefined;
-    transformer.nodes(state.tool === "select" && node ? [node] : []);
+    const showTransformer = state.tool === "select" || hoveredId === state.selectedId;
+    transformer.nodes(showTransformer && node ? [node] : []);
     transformer.getLayer()?.batchDraw();
-  }, [state.selectedId, state.tool]);
+  }, [state.selectedId, state.tool, hoveredId]);
 
   function registerShapeNode(id: string, node: Konva.Node | null) {
     if (node) {
@@ -380,7 +389,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
   }, [editingText?.id]);
 
   function select(id: string) {
-    if (state.tool === "select") onStateChange(selectShape(state, id));
+    if (state.tool === "select" || hoveredId === id) onStateChange(selectShape(state, id));
   }
 
   function startEditingText(shape: TextShape) {
@@ -391,6 +400,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
       y: (containerRect?.top ?? 0) + shape.y * fit.scale,
       value: shape.text,
       fontSize: shape.fontSize,
+      width: shape.width,
     });
   }
 
@@ -401,17 +411,64 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
     el.style.height = `${el.scrollHeight}px`;
   }
 
+  // Shared by the textarea's onBlur and by handleMouseDown's "clicked
+  // elsewhere while still editing" case, so both paths capture the wrap
+  // width the same way — a previous version duplicated a simplified copy of
+  // this in handleMouseDown that saved `text` but forgot `width`, so
+  // committing via a canvas click (rather than a real DOM blur) silently
+  // dropped the wrap point.
+  //
+  // Unlike the other tools, text reverts to "select" once you're done with
+  // it (rather than staying on "text") — placing text is a modal edit
+  // session, not a quick single-gesture shape, and this also keeps
+  // handleMouseDown's "click elsewhere to finish" from itself being
+  // interpreted as the start of a brand new text box.
+  function commitTextInto(base: EditorState): EditorState {
+    if (!editingText) return base;
+    // Capture the textarea's on-screen width (converted back to native
+    // image-pixel space, same as x/y) so the committed Konva Text node can
+    // word-wrap at the same point the textarea was softly wrapping at,
+    // instead of rendering everything as one unbounded line.
+    const width = textareaRef.current ? textareaRef.current.clientWidth / fit.scale : undefined;
+    return setTool(updateShape(base, editingText.id, { text: editingText.value, width }), "select");
+  }
+
   function commitEditingText() {
     if (!editingText) return;
-    onStateChange(updateShape(state, editingText.id, { text: editingText.value }));
+    onStateChange(commitTextInto(state));
     setEditingText(null);
   }
 
   function handleMouseDown(e: any) {
-    if (state.tool === "select") {
+    // Since the active tool no longer auto-switches to "select" once a text
+    // box is created, clicking elsewhere while still on the text tool falls
+    // through to the shape-creation branch below instead of the click
+    // naturally blurring (and thereby committing) the textarea — the same
+    // <textarea> DOM node just gets reused for the new text box, discarding
+    // whatever was typed into the previous one before it ever blurs. Commit
+    // any in-progress text edit into the base state up front so every path
+    // below (creating another shape, selecting something else, or just
+    // deselecting) starts from a state that already has it saved.
+    let baseState = state;
+    if (editingText) {
+      baseState = commitTextInto(baseState);
+      setEditingText(null);
+    }
+    // Recomputed from baseState rather than using the outer `selectLike`:
+    // committing a text edit just above can flip baseState.tool to "select"
+    // on its own, and if that's not accounted for here, this click falls
+    // through to the shape-creation logic below, which returns without ever
+    // calling onStateChange when the (now-"select") tool matches nothing —
+    // silently dropping the just-committed text change entirely.
+    const selectLikeNow = baseState.tool === "select" || hoveredId !== null;
+    if (selectLikeNow) {
       // Clicked empty canvas: clear selection instead of leaving a stale one.
+      // (No-op when this is select-like because of hovering a shape, since
+      // then e.target is that shape, not the stage.)
       if (e.target === e.target.getStage()) {
-        onStateChange(selectShape(state, null));
+        onStateChange(selectShape(baseState, null));
+      } else if (baseState !== state) {
+        onStateChange(baseState);
       }
       return;
     }
@@ -420,7 +477,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
     // the image's native pixel coordinates regardless of display size.
     const pos = e.target.getStage().getRelativePointerPosition();
     const id = newId();
-    if (state.tool === "text") {
+    if (baseState.tool === "text") {
       // Prevent the native mousedown from shifting focus to the canvas —
       // that fight is what was stealing focus back from the textarea below.
       e.evt?.preventDefault?.();
@@ -435,25 +492,25 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
         fontSize: 17 + strokeWidth * 3,
         background: false,
       };
-      onStateChange(selectShape(setTool(addShape(state, shape), "select"), shape.id));
+      onStateChange(selectShape(addShape(baseState, shape), shape.id));
       startEditingText(shape);
       return;
     }
     let shape: Shape;
-    if (state.tool === "arrow" || state.tool === "line") {
-      shape = { id, type: state.tool, color, strokeWidth, points: [pos.x, pos.y, pos.x, pos.y] };
-    } else if (state.tool === "pen" || state.tool === "highlighter") {
+    if (baseState.tool === "arrow" || baseState.tool === "line") {
+      shape = { id, type: baseState.tool, color, strokeWidth, points: [pos.x, pos.y, pos.x, pos.y] };
+    } else if (baseState.tool === "pen" || baseState.tool === "highlighter") {
       shape = {
         id,
-        type: state.tool,
+        type: baseState.tool,
         color,
-        strokeWidth: state.tool === "highlighter" ? strokeWidth * 4 : strokeWidth,
+        strokeWidth: baseState.tool === "highlighter" ? strokeWidth * 4 : strokeWidth,
         points: [pos.x, pos.y],
       };
-    } else if (state.tool === "rect" || state.tool === "ellipse" || state.tool === "blur" || state.tool === "crop") {
+    } else if (baseState.tool === "rect" || baseState.tool === "ellipse" || baseState.tool === "blur" || baseState.tool === "crop") {
       shape = {
         id,
-        type: state.tool,
+        type: baseState.tool,
         color,
         strokeWidth,
         x: pos.x,
@@ -465,10 +522,15 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
       return;
     }
     drawing.current = id;
-    onStateChange(addShape(state, shape));
+    onStateChange(addShape(baseState, shape));
   }
 
   function handleMouseMove(e: any) {
+    // Each shape node below has a Konva `id` (distinct from the React key)
+    // matching its shape id, so the node currently under the pointer tells
+    // us directly which annotation (if any) is being hovered.
+    const target = e.target;
+    setHoveredId(target !== target.getStage() ? target.id() || null : null);
     if (!drawing.current) return;
     const pos = e.target.getStage().getRelativePointerPosition();
     // The shape being drawn is always the last item in the array.
@@ -491,10 +553,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
   }
 
   function handleMouseUp() {
-    if (drawing.current) {
-      drawing.current = null;
-      onStateChange(setTool(state, "select"));
-    }
+    drawing.current = null;
   }
 
   // Blur regions always draw directly on top of the base image, underneath
@@ -516,16 +575,19 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
+        onMouseLeave={() => setHoveredId(null)}
       >
         <Layer>
           {image && <KonvaImage image={image} listening={false} />}
           {orderedShapes.map((shape) => {
             const selected = state.selectedId === shape.id;
-            const draggable = state.tool === "select";
+            const hovered = hoveredId === shape.id;
+            const draggable = state.tool === "select" || hovered;
             if (shape.type === "arrow") {
               return (
                 <Fragment key={shape.id}>
                   <Arrow
+                    id={shape.id}
                     points={shape.points}
                     stroke={shape.color}
                     strokeWidth={shape.strokeWidth}
@@ -550,7 +612,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
                       const headRight = roughGenerator.line(x2, y2, rightX, rightY, { seed: seed + 2, roughness: 1.5, bowing: 1 });
                       drawRoughDrawable(context, shapeNode, shaft, headLeft, headRight);
                     }}
-                    {...(selected ? SELECTED_SHADOW : {})}
+                    {...((selected || hovered) ? SELECTED_SHADOW : {})}
                   />
                   {selected && draggable && (
                     <EndpointHandles
@@ -565,6 +627,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
               return (
                 <Fragment key={shape.id}>
                   <Line
+                    id={shape.id}
                     points={shape.points}
                     stroke={shape.color}
                     strokeWidth={shape.strokeWidth}
@@ -582,7 +645,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
                       });
                       drawRoughDrawable(context, shapeNode, drawable);
                     }}
-                    {...(selected ? SELECTED_SHADOW : {})}
+                    {...((selected || hovered) ? SELECTED_SHADOW : {})}
                   />
                   {selected && draggable && (
                     <EndpointHandles
@@ -597,6 +660,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
               return (
                 <Line
                   key={shape.id}
+                  id={shape.id}
                   points={smoothPoints(shape.points)}
                   stroke={shape.color}
                   strokeWidth={shape.strokeWidth}
@@ -605,9 +669,11 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
                   lineJoin="round"
                   tension={0}
                   hitStrokeWidth={Math.max(shape.strokeWidth, 16)}
+                  draggable={draggable}
                   onClick={() => select(shape.id)}
                   onTap={() => select(shape.id)}
-                  {...(selected ? SELECTED_SHADOW : {})}
+                  onDragEnd={(e) => handleArrowDragEnd(shape, e.target)}
+                  {...((selected || hovered) ? SELECTED_SHADOW : {})}
                 />
               );
             }
@@ -630,6 +696,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
               return (
                 <Rect
                   key={shape.id}
+                  id={shape.id}
                   ref={(node) => registerShapeNode(shape.id, node)}
                   x={shape.x}
                   y={shape.y}
@@ -650,7 +717,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
                     });
                     drawRoughDrawable(context, shapeNode, drawable);
                   }}
-                  {...(selected ? SELECTED_SHADOW : {})}
+                  {...((selected || hovered) ? SELECTED_SHADOW : {})}
                 />
               );
             }
@@ -658,6 +725,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
               return (
                 <Ellipse
                   key={shape.id}
+                  id={shape.id}
                   ref={(node) => registerShapeNode(shape.id, node)}
                   x={shape.x + shape.width / 2}
                   y={shape.y + shape.height / 2}
@@ -677,7 +745,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
                     )
                   }
                   onTransformEnd={(e) => handleEllipseTransformEnd(shape, e.target as Konva.Ellipse)}
-                  {...(selected ? SELECTED_SHADOW : {})}
+                  {...((selected || hovered) ? SELECTED_SHADOW : {})}
                 />
               );
             }
@@ -688,6 +756,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
                   pixelatedImage={pixelatedImage}
                   shape={shape}
                   selected={selected}
+                  hovered={hovered}
                   onSelect={() => select(shape.id)}
                   onDragEnd={(x, y) => onStateChange(updateShape(state, shape.id, { x, y }))}
                   registerNode={(node) => registerShapeNode(shape.id, node)}
@@ -702,11 +771,13 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
                 fontSize: shape.fontSize,
                 fontFamily: "Instrument Sans, sans-serif",
                 fontStyle: '600',
+                width: shape.width,
               };
               if (shape.background) {
                 return (
                   <Label
                     key={shape.id}
+                    id={shape.id}
                     x={shape.x}
                     y={shape.y}
                     draggable={draggable}
@@ -716,14 +787,15 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
                     onDblClick={() => startEditingText(shape)}
                     onDblTap={() => startEditingText(shape)}
                   >
-                    <Tag cornerRadius={shape.fontSize * 0.3} fill={shape.color} {...(selected ? SELECTED_SHADOW : {})} />
-                    <Text {...textProps} padding={shape.fontSize * 0.35} fill={isDarkColor(shape.color) ? "white" : "black"} />
+                    <Tag id={shape.id} cornerRadius={shape.fontSize * 0.3} fill={shape.color} {...((selected || hovered) ? SELECTED_SHADOW : {})} />
+                    <Text id={shape.id} {...textProps} padding={shape.fontSize * 0.35} fill={isDarkColor(shape.color) ? "white" : "black"} />
                   </Label>
                 );
               }
               return (
                 <Text
                   key={shape.id}
+                  id={shape.id}
                   x={shape.x}
                   y={shape.y}
                   {...textProps}
@@ -734,7 +806,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
                   onDragEnd={(e) => onStateChange(updateShape(state, shape.id, { x: e.target.x(), y: e.target.y() }))}
                   onDblClick={() => startEditingText(shape)}
                   onDblTap={() => startEditingText(shape)}
-                  {...(selected ? SELECTED_SHADOW : {})}
+                  {...((selected || hovered) ? SELECTED_SHADOW : {})}
                 />
               );
             }
@@ -747,16 +819,25 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
         (() => {
           const editingShape = state.shapes.find((s) => s.id === editingText.id);
           const background = editingShape?.type === "text" && editingShape.background ? editingShape.color : "transparent";
+          // Matches the color the shape will actually render with (the same
+          // value used as the Konva Text's `fill`), except when it has a
+          // background box, where white/black is picked for contrast against
+          // that background color instead.
           const foreground =
-            editingShape?.type === "text" && editingShape.background
-              ? isDarkColor(editingShape.color)
-                ? "white"
-                : "black"
+            editingShape?.type === "text"
+              ? editingShape.background
+                ? isDarkColor(editingShape.color)
+                  ? "white"
+                  : "black"
+                : editingShape.color
               : "inherit";
           return (
             <textarea
               ref={textareaRef}
               rows={1}
+              autoCorrect="off"
+              autoCapitalize="off"
+              autoComplete="off"
               value={editingText.value}
               onChange={(e) => {
                 setEditingText({ ...editingText, value: e.target.value });
@@ -768,6 +849,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
                 // explicitly with Cmd/Ctrl+Enter, cancel with Escape.
                 if (e.key === "Escape") {
                   e.preventDefault();
+                  onStateChange(setTool(state, "select"));
                   setEditingText(null);
                 } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                   e.preventDefault();
@@ -779,6 +861,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
                 left: editingText.x,
                 top: editingText.y,
                 minWidth: 120,
+                width: editingText.width !== undefined ? editingText.width * fit.scale : undefined,
                 fontSize: editingText.fontSize * fit.scale,
                 fontFamily: "var(--font)",
                 lineHeight: 1.2,

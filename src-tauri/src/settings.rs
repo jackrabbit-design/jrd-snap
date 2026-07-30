@@ -108,11 +108,23 @@ pub struct HotkeySettings {
 }
 
 impl Default for HotkeySettings {
+    // Ctrl+D/Ctrl+R collide with common OS/browser shortcuts on Windows, so
+    // the non-macOS defaults add Alt to stay clear of them.
+    #[cfg(target_os = "macos")]
     fn default() -> Self {
         HotkeySettings {
-            capture_area: "CommandOrControl+Shift+2".into(),
-            capture_full: "CommandOrControl+Shift+3".into(),
-            record_area: "CommandOrControl+Shift+4".into(),
+            capture_area: "Control+D".into(),
+            capture_full: "Control+Shift+D".into(),
+            record_area: "Control+R".into(),
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn default() -> Self {
+        HotkeySettings {
+            capture_area: "Control+Alt+D".into(),
+            capture_full: "Control+Shift+D".into(),
+            record_area: "Control+Alt+R".into(),
         }
     }
 }

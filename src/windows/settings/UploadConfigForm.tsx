@@ -17,8 +17,37 @@ const EMPTY: UploadSettings = {
   filenamePrefix: null,
 };
 
+// The UI shows one "Folder/Prefix" field, but the backend still tracks the
+// upload folder (keyPrefix) and the filename prefix (filenamePrefix)
+// separately — build_object_key() joins them as "{keyPrefix}/{filename}"
+// and generate_filename() glues filenamePrefix onto the filename itself.
+// The last "/" in the typed value is the split point: "team/chris" means
+// folder "team" + filename prefix "chris" (-> "team/chris-abc123.png");
+// with no "/" at all, the whole value is just the folder.
+function parseFolderPrefix(value: string): Pick<UploadSettings, "keyPrefix" | "filenamePrefix"> {
+  const slash = value.lastIndexOf("/");
+  if (slash === -1) {
+    return { keyPrefix: value || null, filenamePrefix: null };
+  }
+  return {
+    keyPrefix: value.slice(0, slash) || null,
+    filenamePrefix: value.slice(slash + 1) || null,
+  };
+}
+
+function combineFolderPrefix(keyPrefix: string | null, filenamePrefix: string | null): string {
+  if (keyPrefix && filenamePrefix) return `${keyPrefix}/${filenamePrefix}`;
+  return keyPrefix || filenamePrefix || "";
+}
+
 export default function UploadConfigForm() {
   const [settings, setSettings] = useState<UploadSettings>(EMPTY);
+  // Kept as its own raw string rather than derived from settings on every
+  // render — re-deriving via combineFolderPrefix(settings.keyPrefix, ...)
+  // each render would eat a trailing "/" the moment you type it (an empty
+  // filenamePrefix collapses back out of the combined string), making it
+  // impossible to ever type past the slash.
+  const [folderPrefix, setFolderPrefix] = useState("");
   const [accessKeyId, setAccessKeyId] = useState("");
   const [secretAccessKey, setSecretAccessKey] = useState("");
   const [credsSaved, setCredsSaved] = useState(false);
@@ -26,10 +55,18 @@ export default function UploadConfigForm() {
 
   useEffect(() => {
     getUploadSettings()
-      .then(setSettings)
+      .then((loaded) => {
+        setSettings(loaded);
+        setFolderPrefix(combineFolderPrefix(loaded.keyPrefix, loaded.filenamePrefix));
+      })
       .catch((err) => setStatus(`Failed to load settings: ${err}`));
     hasCredentials().then(setCredsSaved);
   }, []);
+
+  function handleFolderPrefixChange(value: string) {
+    setFolderPrefix(value);
+    setSettings((s) => ({ ...s, ...parseFolderPrefix(value) }));
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -112,20 +149,13 @@ export default function UploadConfigForm() {
       </label>
       <label className="field">
         <div className="label-flex">
-          <span>Key prefix / folder</span>
-          <span className="field-hint">(optional)</span>
-        </div>
-        <input className="input" value={settings.keyPrefix ?? ""} onChange={(e) => field("keyPrefix", e.target.value)} />
-      </label>
-      <label className="field">
-        <div className="label-flex">
-          <span>Filename prefix</span>
-          <span className="field-hint">(optional)</span>
+          <span>Folder/Prefix</span>
+          <span className="field-hint">(optional) e.g. "team" or "team/chris"</span>
         </div>
         <input
           className="input"
-          value={settings.filenamePrefix ?? ""}
-          onChange={(e) => field("filenamePrefix", e.target.value)}
+          value={folderPrefix}
+          onChange={(e) => handleFolderPrefixChange(e.target.value)}
         />
       </label>
       <label className="field">
@@ -133,7 +163,13 @@ export default function UploadConfigForm() {
           <span>Access Key ID</span>
           <span className="field-hint">{credsSaved && !accessKeyId ? "(saved)" : ""}</span>
         </div>
-        <input className="input" value={credsSaved && !accessKeyId ? "********" : ""} onChange={(e) => setAccessKeyId(e.target.value)} />
+        <input
+          className="input"
+          type="password"
+          placeholder={credsSaved ? "•••••••• (saved)" : ""}
+          value={accessKeyId}
+          onChange={(e) => setAccessKeyId(e.target.value)}
+        />
       </label>
       <label className="field">
         <div className="label-flex">
@@ -142,8 +178,9 @@ export default function UploadConfigForm() {
         </div>
         <input
           className="input"
-          type="text"
-          value={credsSaved && !secretAccessKey ? "********" : ""}
+          type="password"
+          placeholder={credsSaved ? "•••••••• (saved)" : ""}
+          value={secretAccessKey}
           onChange={(e) => setSecretAccessKey(e.target.value)}
         />
       </label>

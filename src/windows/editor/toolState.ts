@@ -36,6 +36,11 @@ export interface TextShape extends ShapeBase {
   text: string;
   fontSize: number;
   background: boolean;
+  // Wrap width, in the same native/image pixel space as x/y, captured from
+  // the editing textarea's rendered width so Konva word-wraps the rendered
+  // text at the same point the textarea was softly wrapping it while typing.
+  // Undefined for text that's never been through an edit/commit yet.
+  width?: number;
 }
 
 export type Shape = PointShape | BoxShape | TextShape;

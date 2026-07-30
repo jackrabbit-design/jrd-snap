@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { getHotkeySettings, saveHotkeySettings, type HotkeySettings } from "../../lib/api";
 
-const DEFAULT: HotkeySettings = {
-  captureArea: "CommandOrControl+Shift+2",
-  captureFull: "CommandOrControl+Shift+3",
-  recordArea: "CommandOrControl+Shift+4",
-};
+// Mirrors the per-OS defaults in src-tauri/src/settings.rs — used only as
+// the initial state before the real settings load from the backend.
+const IS_MAC = navigator.platform.toLowerCase().includes("mac");
+const DEFAULT: HotkeySettings = IS_MAC
+  ? { captureArea: "Control+D", captureFull: "Control+Shift+D", recordArea: "Control+R" }
+  : { captureArea: "Control+Alt+D", captureFull: "Control+Shift+D", recordArea: "Control+Alt+R" };
 
 const MODIFIER_KEYS = new Set(["Control", "Meta", "Alt", "Shift"]);
 
