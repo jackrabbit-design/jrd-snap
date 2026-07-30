@@ -56,6 +56,10 @@ export function showOverlayForRecording(): Promise<void> {
   return invoke("show_overlay_for_recording");
 }
 
+export function startFloatingCapture(): Promise<void> {
+  return invoke("start_floating_capture");
+}
+
 export function resizeEditorWindow(width: number, height: number): Promise<void> {
   return invoke("resize_editor_window", { width, height });
 }

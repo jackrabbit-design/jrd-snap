@@ -24,7 +24,7 @@ interface DisplayRect {
 }
 
 type Phase = "select" | "confirm" | "recording";
-type Purpose = "screenshot" | "record";
+type Purpose = "screenshot" | "record" | "floating";
 
 export default function OverlayApp() {
   const [start, setStart] = useState<Point | null>(null);
@@ -66,7 +66,7 @@ export default function OverlayApp() {
   }, []);
 
   useEffect(() => {
-    const unlisten = listen<{ purpose: "screenshot" | "record" }>("overlay-mode", (event) => {
+    const unlisten = listen<{ purpose: Purpose }>("overlay-mode", (event) => {
       setPurpose(event.payload.purpose);
       setPhase("select");
       forceCrosshairCursor();
@@ -116,9 +116,10 @@ export default function OverlayApp() {
     setStart(null);
     setCurrent(null);
     if (width < 2 || height < 2) {
-      if (purpose === "screenshot") {
+      if (purpose === "screenshot" || purpose === "floating") {
         await invoke("hide_overlay");
         await invoke("reset_capture_icon");
+        if (purpose === "floating") await invoke("cancel_floating_capture");
       }
       return;
     }
@@ -150,11 +151,16 @@ export default function OverlayApp() {
     // include the overlay's own dimming, making everything look darker.
     await invoke("hide_overlay");
     await new Promise((resolve) => setTimeout(resolve, 150));
-    await invoke("submit_area_capture", { rect });
+    if (purpose === "floating") {
+      await invoke("submit_floating_capture", { rect });
+    } else {
+      await invoke("submit_area_capture", { rect });
+    }
   }
 
   async function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Escape") {
+      const wasFloating = purpose === "floating";
       setStart(null);
       setCurrent(null);
       setPhase("select");
@@ -163,6 +169,7 @@ export default function OverlayApp() {
       setRecordDisplayRegion(null);
       await invoke("hide_overlay");
       await invoke("reset_capture_icon");
+      if (wasFloating) await invoke("cancel_floating_capture");
     }
   }
 

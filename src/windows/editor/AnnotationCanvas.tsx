@@ -17,7 +17,7 @@ import useImage from "use-image";
 import Konva from "konva";
 import rough from "roughjs/bin/rough";
 import type { Drawable } from "roughjs/bin/core";
-import type { BoxShape, EditorState, PointShape, Shape, TextShape, ToolType } from "./toolState";
+import type { BoxShape, EditorState, ImageShape, PointShape, Shape, TextShape, ToolType } from "./toolState";
 import { addShape, removeShape, selectShape, setTool, updateShape } from "./toolState";
 
 const roughGenerator = rough.generator();
@@ -212,6 +212,44 @@ function BlurRegion({ pixelatedImage, shape, selected, hovered, onSelect, onDrag
   );
 }
 
+// A screenshot pasted on top of the base capture via the "add screenshot"
+// tool — draggable/resizable like any other shape, but rendered as an
+// actual image rather than a drawn annotation. Loads its own bitmap via
+// useImage() (one hook call per shape instance, via this dedicated
+// component) rather than trying to call the hook from inside the shapes
+// .map() in the parent, which would break the rules of hooks.
+function FloatingImage({ shape, selected, hovered, draggable, onSelect, onDragEnd, registerNode, onTransformEnd }: {
+  shape: ImageShape;
+  selected: boolean;
+  hovered: boolean;
+  draggable: boolean;
+  onSelect: () => void;
+  onDragEnd: (x: number, y: number) => void;
+  registerNode: (node: Konva.Image | null) => void;
+  onTransformEnd: (node: Konva.Image) => void;
+}) {
+  const [image] = useImage(shape.src);
+  if (!image) return null;
+
+  return (
+    <KonvaImage
+      id={shape.id}
+      ref={registerNode}
+      image={image}
+      x={shape.x}
+      y={shape.y}
+      width={shape.width}
+      height={shape.height}
+      draggable={draggable}
+      onClick={onSelect}
+      onTap={onSelect}
+      onDragEnd={(e) => onDragEnd(e.target.x(), e.target.y())}
+      onTransformEnd={(e) => onTransformEnd(e.target as Konva.Image)}
+      {...((selected || hovered) ? SELECTED_SHADOW : {})}
+    />
+  );
+}
+
 interface Props {
   imageSrc: string;
   state: EditorState;
@@ -252,6 +290,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
   // actually selected — so switching tools to draw something else doesn't
   // stop you from nudging/resizing a shape you're pointing at.
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const selectedShape = state.shapes.find((s) => s.id === state.selectedId);
 
   useEffect(() => {
     const transformer = transformerRef.current;
@@ -270,11 +309,13 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
     }
   }
 
-  // Shared by rect and the blur region — both are plain x/y/width/height
-  // boxes, so a resize just reads the node's post-drag scale back into an
-  // absolute size and resets the node's own scale to 1 (Konva's Transformer
-  // resizes by scaling the node, not by changing width/height directly).
-  function handleBoxTransformEnd(shape: BoxShape, node: Konva.Node) {
+  // Shared by rect, the blur region, and floating images — all are plain
+  // x/y/width/height boxes, so a resize just reads the node's post-drag
+  // scale back into an absolute size and resets the node's own scale to 1
+  // (Konva's Transformer resizes by scaling the node, not by changing
+  // width/height directly). Only shape.id is used, so this accepts any
+  // shape rather than specifically BoxShape.
+  function handleBoxTransformEnd(shape: { id: string }, node: Konva.Node) {
     const scaleX = node.scaleX();
     const scaleY = node.scaleY();
     node.scaleX(1);
@@ -556,13 +597,19 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
     drawing.current = null;
   }
 
-  // Blur regions always draw directly on top of the base image, underneath
-  // every other annotation, regardless of the order they were drawn in —
-  // otherwise a blur added after other shapes would cover them up. Array
-  // sort is stable, so shapes within each group keep their relative order.
-  const orderedShapes = [...state.shapes].sort(
-    (a, b) => (a.type === "blur" ? 0 : 1) - (b.type === "blur" ? 0 : 1),
-  );
+  // Layering is independent of draw/capture order: blur regions always sit
+  // directly on top of the base image (otherwise a blur added after other
+  // annotations would cover them up); floating screenshots sit above that
+  // but below every other annotation type, per the "add screenshot" tool's
+  // whole point — pasting reference material underneath your annotations,
+  // not on top of them. Array sort is stable, so shapes within each of
+  // those groups keep their own relative (i.e. draw/capture) order.
+  function shapeRank(type: Shape["type"]): number {
+    if (type === "blur") return 0;
+    if (type === "image") return 1;
+    return 2;
+  }
+  const orderedShapes = [...state.shapes].sort((a, b) => shapeRank(a.type) - shapeRank(b.type));
 
   return (
     <div ref={containerRef} className="canvas-panel" style={{ position: "relative" }}>
@@ -764,6 +811,21 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
                 />
               );
             }
+            if (shape.type === "image") {
+              return (
+                <FloatingImage
+                  key={shape.id}
+                  shape={shape}
+                  selected={selected}
+                  hovered={hovered}
+                  draggable={draggable}
+                  onSelect={() => select(shape.id)}
+                  onDragEnd={(x, y) => onStateChange(updateShape(state, shape.id, { x, y }))}
+                  registerNode={(node) => registerShapeNode(shape.id, node)}
+                  onTransformEnd={(node) => handleBoxTransformEnd(shape, node)}
+                />
+              );
+            }
             if (shape.type === "text") {
               if (editingText?.id === shape.id) return null;
               const textProps = {
@@ -812,7 +874,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
             }
             return null;
           })}
-          <Transformer ref={transformerRef} rotateEnabled={false} keepRatio={false} />
+          <Transformer ref={transformerRef} rotateEnabled={false} keepRatio={selectedShape?.type === "image"} />
         </Layer>
       </Stage>
       {editingText &&

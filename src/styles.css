@@ -393,6 +393,12 @@ input[type="checkbox"]:checked::after {
   height: 100%;
   overflow: hidden;
   background: var(--bg);
+  opacity: 1;
+  transition: opacity 0.18s ease;
+}
+
+.editor-page.editor-fading {
+  opacity: 0;
 }
 
 .editor-waiting {

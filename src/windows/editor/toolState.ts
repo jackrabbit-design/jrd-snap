@@ -43,7 +43,17 @@ export interface TextShape extends ShapeBase {
   width?: number;
 }
 
-export type Shape = PointShape | BoxShape | TextShape;
+export interface ImageShape extends ShapeBase {
+  type: "image";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  // A data: URL, same as the base capture's own imageSrc.
+  src: string;
+}
+
+export type Shape = PointShape | BoxShape | TextShape | ImageShape;
 
 export interface EditorState {
   tool: ToolType;
@@ -65,7 +75,7 @@ export function addShape(state: EditorState, shape: Shape): EditorState {
   return { ...state, shapes: [...state.shapes, shape] };
 }
 
-export type ShapePatch = Partial<PointShape> | Partial<BoxShape> | Partial<TextShape>;
+export type ShapePatch = Partial<PointShape> | Partial<BoxShape> | Partial<TextShape> | Partial<ImageShape>;
 
 export function updateShape(state: EditorState, id: string, patch: ShapePatch): EditorState {
   return {

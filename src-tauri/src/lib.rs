@@ -280,6 +280,34 @@ pub(crate) fn open_editor_with_png(app: &tauri::AppHandle, png_bytes: Vec<u8>) {
     }
 }
 
+// Re-shows the editor window after it was hidden for a floating-image
+// capture — both on success (about to add the new image) and on
+// cancel/failure (nothing changed, just undo the hide).
+pub(crate) fn restore_editor_window(app: &tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("editor") {
+        if let Err(e) = win.show() {
+            eprintln!("failed to show editor window: {e}");
+        }
+        if let Err(e) = win.set_focus() {
+            eprintln!("failed to focus editor window: {e}");
+        }
+    } else {
+        eprintln!("editor window missing");
+    }
+}
+
+// Unlike open_editor_with_png, this doesn't touch LastCaptureState/"reopen
+// last capture" — that feature is about the original base capture, not an
+// image layered on top of an already-open editor session.
+pub(crate) fn add_floating_image_to_editor(app: &tauri::AppHandle, png_bytes: Vec<u8>) {
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&png_bytes);
+    restore_editor_window(app);
+    if let Err(e) = app.emit_to("editor", "editor-add-image", b64) {
+        eprintln!("failed to emit editor-add-image: {e}");
+    }
+}
+
 const CAPTURE_HISTORY_LIMIT: usize = 6;
 
 #[derive(Clone, serde::Serialize)]
@@ -339,6 +367,9 @@ pub fn run() {
             commands::hide_overlay,
             commands::hide_other_overlays,
             commands::submit_area_capture,
+            commands::start_floating_capture,
+            commands::submit_floating_capture,
+            commands::cancel_floating_capture,
             commands::capture_full_screen,
             commands::capture_area,
             commands::upload_file,

@@ -7,8 +7,15 @@ import type Konva from "konva";
 import AnnotationCanvas from "./AnnotationCanvas";
 import Toolbar from "./Toolbar";
 import { bytesToDataUrl, exportStageToBytes } from "./export";
-import { uploadFile, trimAndUpload, getLastCapture, readVideoBase64, recordCaptureHistory } from "../../lib/api";
-import { applyCrop, initialState, setTool, updateShape, type EditorState } from "./toolState";
+import {
+  uploadFile,
+  trimAndUpload,
+  getLastCapture,
+  readVideoBase64,
+  recordCaptureHistory,
+  startFloatingCapture,
+} from "../../lib/api";
+import { addShape, applyCrop, initialState, selectShape, setTool, updateShape, type EditorState, type ImageShape } from "./toolState";
 import VideoTrimmer, { type VideoTrimmerHandle } from "./VideoTrimmer";
 import { initialTrimState, type TrimState } from "./trimState";
 
@@ -38,6 +45,7 @@ export default function EditorApp() {
   const [color, setColor] = useState(() => localStorage.getItem("editor-color") ?? "#ff0000");
   const [strokeWidth, setStrokeWidth] = useState(() => Number(localStorage.getItem("editor-stroke-width")) || 3);
   const [uploading, setUploading] = useState(false);
+  const [fading, setFading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [displayScale, setDisplayScale] = useState(1);
   const stageRef = useRef<Konva.Stage>(null);
@@ -72,6 +80,50 @@ export default function EditorApp() {
       setImageSrc(`data:image/png;base64,${event.payload}`);
       setState(initialState);
       setVideoSrc(null);
+    });
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, []);
+
+  // The "add screenshot" tool's capture comes back as a new floating image
+  // rather than replacing the editor's contents — added at its native
+  // captured size (no scaling/distortion) with a small fixed inset so it
+  // doesn't land exactly on top of the base image's corner; the user drags
+  // it wherever it actually belongs afterward.
+  useEffect(() => {
+    const unlisten = listen<string>("editor-add-image", (event) => {
+      const src = `data:image/png;base64,${event.payload}`;
+      const img = new Image();
+      img.onload = () => {
+        const shape: ImageShape = {
+          id: `image-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          type: "image",
+          color,
+          strokeWidth,
+          x: 40,
+          y: 40,
+          width: img.naturalWidth,
+          height: img.naturalHeight,
+          src,
+        };
+        setState((prev) => selectShape(setTool(addShape(prev, shape), "select"), shape.id));
+      };
+      img.src = src;
+    });
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, [color, strokeWidth]);
+
+  // Covers both ways handleAddScreenshot's fade-out ever resolves: a new
+  // image was added (above), or the capture was cancelled/failed and
+  // nothing changed. Rust re-shows and re-focuses this window in either
+  // case, so reacting to regaining focus (rather than a second dedicated
+  // event) fades it back in either way without duplicating that reset.
+  useEffect(() => {
+    const unlisten = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+      if (focused) setFading(false);
     });
     return () => {
       unlisten.then((f) => f());
@@ -159,6 +211,23 @@ export default function EditorApp() {
 
   function handleTextBackgroundChange(next: boolean) {
     if (state.selectedId) setState(updateShape(state, state.selectedId, { background: next }));
+  }
+
+  // Fades this window's content out, then hides the window itself (via
+  // start_floating_capture) and shows the capture overlay. The window
+  // reappears — and the fade reverses — either with a new floating image
+  // (the "editor-add-image" listener above) or on cancel; both paths funnel
+  // through this window regaining focus, so that's the one signal used to
+  // reset `fading` rather than duplicating the reset in two places.
+  async function handleAddScreenshot() {
+    setFading(true);
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    try {
+      await startFloatingCapture();
+    } catch (e) {
+      console.error("failed to start floating capture", e);
+      setFading(false);
+    }
   }
 
   function handleApplyCrop() {
@@ -266,7 +335,7 @@ export default function EditorApp() {
   const selectedShape = state.shapes.find((s) => s.id === state.selectedId);
 
   return (
-    <div className="editor-page">
+    <div className={`editor-page${fading ? " editor-fading" : ""}`}>
       <div className="editor-header-row editor-toolbar-row">
         <Toolbar
           tool={state.tool}
@@ -274,7 +343,9 @@ export default function EditorApp() {
           strokeWidth={strokeWidth}
           showTextBackground={selectedShape?.type === "text"}
           textBackground={selectedShape?.type === "text" ? selectedShape.background : false}
+          disableStyleControls={selectedShape?.type === "image"}
           onToolChange={(t) => setState(setTool(state, t))}
+          onAddScreenshot={handleAddScreenshot}
           onColorChange={handleColorChange}
           onStrokeWidthChange={handleStrokeWidthChange}
           onTextBackgroundChange={handleTextBackgroundChange}

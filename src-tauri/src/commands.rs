@@ -228,6 +228,45 @@ pub fn submit_area_capture(window: WebviewWindow, rect: CaptureRect) -> Result<(
     }
 }
 
+// Invoked from the editor window itself (via its "add screenshot" tool) —
+// `window` is auto-supplied as the editor window, so hiding it (to keep it
+// out of the way of, and out of, the next capture) and showing the overlay
+// happen together as one atomic step from the frontend's perspective.
+#[tauri::command]
+pub fn start_floating_capture(window: WebviewWindow) -> Result<(), String> {
+    window.hide().map_err(|e| e.to_string())?;
+    show_overlays(&window.app_handle(), "floating")
+}
+
+// Mirrors submit_area_capture, but adds the result as a floating image on
+// top of whatever's already in the editor instead of replacing it, and
+// re-shows the editor window that start_floating_capture hid.
+#[tauri::command]
+pub fn submit_floating_capture(window: WebviewWindow, rect: CaptureRect) -> Result<(), String> {
+    let app = window.app_handle();
+    let index = overlay_monitor_index(&window)?;
+    match capture::capture_area_png(rect, index) {
+        Ok(bytes) => {
+            crate::add_floating_image_to_editor(app, bytes);
+            Ok(())
+        }
+        Err(e) => {
+            crate::notify_capture_failed(app, &e);
+            crate::set_capture_tray_icon(app, crate::CaptureIconState::Default);
+            crate::restore_editor_window(app);
+            Err(e)
+        }
+    }
+}
+
+// Called by the overlay on Escape / a too-small drag while in "floating"
+// mode — nothing was captured, so just undo start_floating_capture's hide.
+#[tauri::command]
+pub fn cancel_floating_capture(app: AppHandle) -> Result<(), String> {
+    crate::restore_editor_window(&app);
+    Ok(())
+}
+
 #[tauri::command]
 pub fn capture_full_screen(app: AppHandle) -> Result<Vec<u8>, String> {
     crate::discard_any_active_recording(&app);

@@ -20,7 +20,11 @@ interface Props {
   strokeWidth: number;
   showTextBackground: boolean;
   textBackground: boolean;
+  // True when the selected shape is a floating screenshot, which has no use
+  // for a stroke color or width.
+  disableStyleControls: boolean;
   onToolChange: (t: ToolType) => void;
+  onAddScreenshot: () => void;
   onColorChange: (c: string) => void;
   onStrokeWidthChange: (w: number) => void;
   onTextBackgroundChange: (v: boolean) => void;
@@ -32,7 +36,9 @@ export default function Toolbar({
   strokeWidth,
   showTextBackground,
   textBackground,
+  disableStyleControls,
   onToolChange,
+  onAddScreenshot,
   onColorChange,
   onStrokeWidthChange,
   onTextBackgroundChange,
@@ -50,12 +56,24 @@ export default function Toolbar({
           <ToolIcon type={t.type} />
         </button>
       ))}
+      <button
+        type="button"
+        title="Add screenshot — hides this window, take another capture, and drop it on top of the current one"
+        onClick={onAddScreenshot}
+        className="tool-button"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none"><title>Add Screenshot</title>
+          <rect x="1" y="1" width="14" height="14" rx="2" stroke="#fff" strokeWidth="1.5" />
+          <path d="M8 5v6M5 8h6" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      </button>
       <div className="toolbar-divider" />
       <input
         type="color"
         className="color-swatch"
         title="Color"
         value={color}
+        disabled={disableStyleControls}
         onChange={(e) => onColorChange(e.target.value)}
       />
       <input
@@ -65,7 +83,7 @@ export default function Toolbar({
         min={1}
         max={30}
         value={strokeWidth}
-        disabled={tool === "blur"}
+        disabled={tool === "blur" || disableStyleControls}
         onChange={(e) => onStrokeWidthChange(Number(e.target.value))}
       />
       {showTextBackground && (
