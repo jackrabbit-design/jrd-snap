@@ -63,8 +63,8 @@ export default function Toolbar({
         className="tool-button"
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none"><title>Add Screenshot</title>
-          <rect x="1" y="1" width="14" height="14" rx="2" stroke="#fff" strokeWidth="1.5" />
-          <path d="M8 5v6M5 8h6" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" />
+          <rect x="1" y="1" width="14" height="14" rx="2" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M8 5v6M5 8h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
       </button>
       <div className="toolbar-divider" />

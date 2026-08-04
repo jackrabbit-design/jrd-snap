@@ -33,6 +33,18 @@ fn icon_filename(state: CaptureIconState) -> &'static str {
     }
 }
 
+// Only the idle/default glyph is a plain white silhouette (RGB is uniformly
+// white; the shape lives entirely in the alpha channel) — exactly what
+// macOS's "template image" mode expects, so marking just this one as a
+// template lets the OS render it correctly on both light and dark menu
+// bars automatically, instead of it being a literally-white icon that goes
+// invisible on a light one. Progress/success are deliberately colored
+// status indicators (teal dots / a teal check) — forcing those into
+// template mode would flatten that color into a plain monochrome shape.
+fn icon_is_template(state: CaptureIconState) -> bool {
+    matches!(state, CaptureIconState::Default)
+}
+
 // Bumped by every call to set_capture_tray_icon, so the delayed "success ->
 // default" revert (below) can tell whether it's still the most recent icon
 // change by the time its 3 seconds are up, or whether a newer capture has
@@ -50,7 +62,7 @@ pub(crate) fn set_capture_tray_icon(app: &tauri::AppHandle, state: CaptureIconSt
     match tauri::image::Image::from_path(&path) {
         Ok(image) => {
             let tray = app.state::<tauri::tray::TrayIcon<tauri::Wry>>();
-            if let Err(e) = tray.set_icon(Some(image)) {
+            if let Err(e) = tray.set_icon_with_as_template(Some(image), icon_is_template(state)) {
                 eprintln!("failed to set tray icon: {e}");
             }
         }
