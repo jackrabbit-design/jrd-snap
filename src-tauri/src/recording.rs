@@ -30,6 +30,7 @@ pub fn build_capture_args(
     mic_enabled: bool,
     output_path: &std::path::Path,
     macos_screen_device_index: &str,
+    scale_factor: f64,
 ) -> Vec<String> {
     let mut args: Vec<String> = Vec::new();
     // Referenced unconditionally so the parameter isn't reported unused on
@@ -89,9 +90,24 @@ pub fn build_capture_args(
         }
     }
 
+    let mut filters: Vec<String> = Vec::new();
     if let Some(r) = region {
+        filters.push(format!("crop={}:{}:{}:{}", r.width, r.height, r.x, r.y));
+    }
+    // Captures on a Retina/HiDPI display come out of avfoundation/gdigrab at
+    // the full physical (e.g. 2x) resolution — scale back down to 1x before
+    // encoding so the uploaded video matches the size it'll actually be
+    // viewed at, instead of needlessly quadrupling upload size/bandwidth for
+    // no visible benefit. trunc(.../2)*2 forces even output dimensions
+    // (yuv420p requires them) even when scale_factor isn't a clean divisor.
+    if scale_factor > 1.0 {
+        filters.push(format!(
+            "scale=trunc(iw/{scale_factor}/2)*2:trunc(ih/{scale_factor}/2)*2"
+        ));
+    }
+    if !filters.is_empty() {
         args.push("-vf".into());
-        args.push(format!("crop={}:{}:{}:{}", r.width, r.height, r.x, r.y));
+        args.push(filters.join(","));
     }
 
     args.push("-pix_fmt".into());
@@ -201,6 +217,7 @@ pub fn start_recording(
     mic_enabled: bool,
     output_path: &std::path::Path,
     monitor_index: usize,
+    scale_factor: f64,
 ) -> Result<FfmpegChild, String> {
     #[cfg(target_os = "macos")]
     let screen_device_index = match find_macos_screen_device_index(monitor_index) {
@@ -230,7 +247,7 @@ pub fn start_recording(
         );
     }
 
-    let args = build_capture_args(region, mic_enabled, output_path, &screen_device_index);
+    let args = build_capture_args(region, mic_enabled, output_path, &screen_device_index, scale_factor);
     eprintln!("starting ffmpeg: {}", args.join(" "));
     let mut child = FfmpegCommand::new()
         .args(&args)
@@ -311,7 +328,7 @@ mod tests {
 
     #[test]
     fn full_screen_no_mic_has_no_crop_filter_or_audio_input() {
-        let args = build_capture_args(None, false, Path::new("/tmp/out.mp4"), "1");
+        let args = build_capture_args(None, false, Path::new("/tmp/out.mp4"), "1", 1.0);
         let joined = args.join(" ");
         assert!(!joined.contains("crop="));
         assert!(!joined.contains("-c:a"));
@@ -321,14 +338,14 @@ mod tests {
     #[test]
     fn area_region_adds_a_crop_filter_with_the_right_dimensions() {
         let region = CaptureRegion { x: 10, y: 20, width: 300, height: 200 };
-        let args = build_capture_args(Some(region), false, Path::new("/tmp/out.mp4"), "1");
+        let args = build_capture_args(Some(region), false, Path::new("/tmp/out.mp4"), "1", 1.0);
         let joined = args.join(" ");
         assert!(joined.contains("crop=300:200:10:20"));
     }
 
     #[test]
     fn mic_enabled_adds_an_audio_encoder() {
-        let args = build_capture_args(None, true, Path::new("/tmp/out.mp4"), "1");
+        let args = build_capture_args(None, true, Path::new("/tmp/out.mp4"), "1", 1.0);
         let joined = args.join(" ");
         assert!(joined.contains("-c:a"));
         assert!(joined.contains("aac"));
@@ -336,8 +353,30 @@ mod tests {
 
     #[test]
     fn output_path_is_always_the_last_argument() {
-        let args = build_capture_args(None, false, Path::new("/tmp/out.mp4"), "1");
+        let args = build_capture_args(None, false, Path::new("/tmp/out.mp4"), "1", 1.0);
         assert_eq!(args.last().map(String::as_str), Some("/tmp/out.mp4"));
+    }
+
+    #[test]
+    fn scale_factor_of_one_adds_no_scale_filter() {
+        let args = build_capture_args(None, false, Path::new("/tmp/out.mp4"), "1", 1.0);
+        let joined = args.join(" ");
+        assert!(!joined.contains("scale="));
+    }
+
+    #[test]
+    fn retina_scale_factor_adds_a_scale_filter_dividing_by_it() {
+        let args = build_capture_args(None, false, Path::new("/tmp/out.mp4"), "1", 2.0);
+        let joined = args.join(" ");
+        assert!(joined.contains("scale=trunc(iw/2/2)*2:trunc(ih/2/2)*2"));
+    }
+
+    #[test]
+    fn crop_and_scale_filters_are_combined_in_one_vf() {
+        let region = CaptureRegion { x: 10, y: 20, width: 300, height: 200 };
+        let args = build_capture_args(Some(region), false, Path::new("/tmp/out.mp4"), "1", 2.0);
+        let vf_index = args.iter().position(|a| a == "-vf").expect("-vf present");
+        assert_eq!(args[vf_index + 1], "crop=300:200:10:20,scale=trunc(iw/2/2)*2:trunc(ih/2/2)*2");
     }
 
     // Real stderr captured on a dev machine by running:
@@ -417,7 +456,7 @@ mod manual_e2e_check {
     fn real_start_and_stop_produces_a_playable_mp4() {
         let output_path = std::env::temp_dir().join("snap-manual-e2e-test.mp4");
         let started_at = std::time::Instant::now();
-        let child = start_recording(None, false, &output_path, 0).unwrap();
+        let child = start_recording(None, false, &output_path, 0, 1.0).unwrap();
         sleep(Duration::from_secs(3));
         stop_recording(child, started_at).unwrap();
 

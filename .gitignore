@@ -8,3 +8,8 @@ src-tauri/target/
 # script to regenerate). The license notice alongside it IS committed.
 src-tauri/binaries/*
 !src-tauri/binaries/*.txt
+
+# The self-signed code-signing identity (private key!) used to sign release
+# builds — see tauri.conf.json's bundle.macOS.signingIdentity. Never commit
+# this; it should live in the login keychain plus one secure backup.
+src-tauri/codesign-backup/

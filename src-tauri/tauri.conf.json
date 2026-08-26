@@ -32,6 +32,7 @@
         "url": "index.html#/editor",
         "width": 900,
         "height": 700,
+        "minWidth": 900,
         "visible": false
       },
       {
@@ -76,6 +77,9 @@
       "icons/success-*.png",
       "binaries/FFMPEG_LICENSE.txt"
     ],
-    "externalBin": ["binaries/ffmpeg"]
+    "externalBin": ["binaries/ffmpeg"],
+    "macOS": {
+      "signingIdentity": "Snap Local Code Signing"
+    }
   }
 }

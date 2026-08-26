@@ -362,11 +362,16 @@ pub fn start_recording_command(
     let origin = window.outer_position().map_err(|e| e.to_string())?;
     let tauri_monitors = app.available_monitors().map_err(|e| e.to_string())?;
     let tauri_size = tauri_monitors.get(monitor_index).map(|m| *m.size());
+    // Retina/HiDPI displays report a scale_factor > 1.0 (e.g. 2.0) — passed
+    // through so start_recording can scale the captured video back down to
+    // 1x before encoding, matching the size it'll actually be viewed at
+    // instead of uploading it at 2x/3x the necessary resolution.
+    let scale_factor = tauri_monitors.get(monitor_index).map(|m| m.scale_factor()).unwrap_or(1.0);
     eprintln!(
-        "start_recording_command: region={region:?}, monitor_index={monitor_index}, tauri_size={tauri_size:?}, {}",
+        "start_recording_command: region={region:?}, monitor_index={monitor_index}, tauri_size={tauri_size:?}, scale_factor={scale_factor}, {}",
         capture::monitor_debug_info(monitor_index).unwrap_or_else(|e| format!("monitor_debug_info failed: {e}"))
     );
-    let child = match recording::start_recording(region, mic_enabled, &output_path, monitor_index) {
+    let child = match recording::start_recording(region, mic_enabled, &output_path, monitor_index, scale_factor) {
         Ok(child) => child,
         Err(e) => {
             crate::notify_capture_failed(app, &format!("failed to start recording: {e}"));

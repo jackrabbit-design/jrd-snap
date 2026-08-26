@@ -389,6 +389,21 @@ export default function EditorApp() {
     cropNodes.forEach((node) => {
       node.hide();
     });
+    // Same idea for the selected/hovered blue glow (SELECTED_SHADOW in
+    // AnnotationCanvas) — it's editor UI chrome, not part of the actual
+    // annotation, so it shouldn't end up baked into the uploaded PNG either.
+    // shadowEnabled only exists on Shape (not the base Node type returned by
+    // find), hence the type guard rather than a plain property check.
+    // find()'s selector param is typed `any`, so its generic can't be
+    // inferred from the guard — spelled out explicitly instead.
+    type ShadowNode = Konva.Node & { shadowEnabled: (v?: boolean) => boolean };
+    function hasShadow(node: Konva.Node): node is ShadowNode {
+      return typeof (node as { shadowEnabled?: unknown }).shadowEnabled === "function";
+    }
+    const glowingNodes = stageRef.current.find<ShadowNode>(hasShadow).filter((node) => node.shadowEnabled());
+    glowingNodes.forEach((node) => {
+      node.shadowEnabled(false);
+    });
     stageRef.current.batchDraw();
     try {
       const bytes = exportStageToBytes(stageRef.current, 1 / displayScale);
@@ -406,6 +421,9 @@ export default function EditorApp() {
     } finally {
       cropNodes.forEach((node) => {
         node.show();
+      });
+      glowingNodes.forEach((node) => {
+        node.shadowEnabled(true);
       });
       stageRef.current.batchDraw();
       setUploading(false);
@@ -482,7 +500,11 @@ export default function EditorApp() {
             onClick={undo}
             disabled={hist.past.length === 0}
           >
-            Undo
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: "middle" }}>
+              <title>Undo</title>
+              <polyline points="9 14 4 9 9 4" />
+              <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+            </svg>
           </button>
           <button
             type="button"
@@ -491,7 +513,11 @@ export default function EditorApp() {
             onClick={redo}
             disabled={hist.future.length === 0}
           >
-            Redo
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: "scaleX(-1)", verticalAlign: "middle" }}>
+              <title>Redo</title>
+              <polyline points="9 14 4 9 9 4" />
+              <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+            </svg>
           </button>
           {state.shapes.some((s) => s.type === "crop") && (
             <button type="button" className="button" onClick={handleApplyCrop}>

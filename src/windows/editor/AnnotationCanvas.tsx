@@ -22,8 +22,15 @@ import { addShape, removeShape, selectShape, setTool, updateShape } from "./tool
 
 const roughGenerator = rough.generator();
 
+// Deliberately gentle — Excalidraw's own default "artist" preset uses
+// roughness around 1, which reads as a relaxed hand-drawn wobble rather
+// than a jittery sketch. Bump either of these up for more character, or
+// down toward 0 for something closer to perfectly geometric.
+const ROUGH_ROUGHNESS = 1;
+const ROUGH_BOWING = 0.6;
+
 // Konva calls a custom sceneFunc every redraw (including every frame of a
-// drag), so the sketchy wobble has to be deterministic per shape rather than
+// drag), so the wobble has to be deterministic per shape rather than
 // re-randomized each time — otherwise the outline would visibly jitter while
 // idle or dragging. Seeding rough.js from a hash of the shape's own id keeps
 // the same shape's wobble stable across redraws while still varying shape to
@@ -34,6 +41,55 @@ function seedFromId(id: string): number {
     hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
   }
   return hash || 1;
+}
+
+function appendRoughPath(context: Konva.Context, drawable: Drawable) {
+  drawable.sets.forEach((set) => {
+    if (set.type !== "path") return;
+    set.ops.forEach(({ op, data }) => {
+      if (op === "move") context.moveTo(data[0], data[1]);
+      else if (op === "lineTo") context.lineTo(data[0], data[1]);
+      else if (op === "bcurveTo") context.bezierCurveTo(data[0], data[1], data[2], data[3], data[4], data[5]);
+    });
+  });
+}
+
+// Replays one or more rough.js Drawables' stroke outlines onto a Konva
+// context as a single path, then hands off to strokeShape so Konva still
+// applies the node's own stroke/strokeWidth attrs (and swaps in its hit-test
+// color when drawing the hit canvas) exactly as it would for a plain
+// built-in shape.
+function drawRoughDrawable(context: Konva.Context, shapeNode: Konva.Shape, ...drawables: Drawable[]) {
+  context.beginPath();
+  drawables.forEach((drawable) => {
+    appendRoughPath(context, drawable);
+  });
+  context.strokeShape(shapeNode);
+}
+
+// An SVG path string for a rounded rectangle, fed to rough.js's path()
+// generator (rather than its plain rectangle(), which has no corner-radius
+// option) so the rect tool keeps its rounded corners *and* picks up the
+// same hand-drawn wobble as everything else. width/height can be negative
+// (dragged up/left from the start point) — same as Konva's own Rect, which
+// draws in that direction natively — so this works in the shape's own
+// magnitude-agnostic local box rather than assuming a positive width/height
+// starting at (0,0).
+function roundedRectPath(width: number, height: number, radius: number): string {
+  const w = Math.abs(width);
+  const h = Math.abs(height);
+  const r = Math.min(radius, w / 2, h / 2);
+  const ox = Math.min(0, width);
+  const oy = Math.min(0, height);
+  const left = ox;
+  const right = ox + w;
+  const top = oy;
+  const bottom = oy + h;
+  return (
+    `M${left + r},${top} H${right - r} Q${right},${top} ${right},${top + r} ` +
+    `V${bottom - r} Q${right},${bottom} ${right - r},${bottom} H${left + r} ` +
+    `Q${left},${bottom} ${left},${bottom - r} V${top + r} Q${left},${top} ${left + r},${top} Z`
+  );
 }
 
 // Shared by the arrow and line tools — both are plain two-point shapes whose
@@ -94,30 +150,6 @@ function smoothPoints(points: number[]): number[] {
   }
   smoothed.push(points[points.length - 2], points[points.length - 1]);
   return smoothed;
-}
-
-function appendRoughPath(context: Konva.Context, drawable: Drawable) {
-  drawable.sets.forEach((set) => {
-    if (set.type !== "path") return;
-    set.ops.forEach(({ op, data }) => {
-      if (op === "move") context.moveTo(data[0], data[1]);
-      else if (op === "lineTo") context.lineTo(data[0], data[1]);
-      else if (op === "bcurveTo") context.bezierCurveTo(data[0], data[1], data[2], data[3], data[4], data[5]);
-    });
-  });
-}
-
-// Replays one or more rough.js Drawables' stroke outlines onto a Konva
-// context as a single path, then hands off to strokeShape so Konva still
-// applies the node's own stroke/strokeWidth attrs (and swaps in its hit-test
-// color when drawing the hit canvas) exactly as it would for a plain
-// built-in shape.
-function drawRoughDrawable(context: Konva.Context, shapeNode: Konva.Shape, ...drawables: Drawable[]) {
-  context.beginPath();
-  drawables.forEach((drawable) => {
-    appendRoughPath(context, drawable);
-  });
-  context.strokeShape(shapeNode);
 }
 
 const TOOL_HOTKEYS: Record<string, ToolType> = {
@@ -403,17 +435,20 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
     // effect to fire on every scale update it triggers.
   }, [image]);
 
-  // Delete/Backspace removes the selected shape in Select mode; bare letter
-  // keys switch tools. Both are disabled while editing text or while any
-  // other input/textarea has focus, so typing a shape's name doesn't yank
-  // the active tool out from under you.
+  // Delete/Backspace removes whatever's selected — not gated on the active
+  // tool being "select", since hovering a shape already lets you select it
+  // (and drag/resize it) no matter which tool is active; requiring tool
+  // === "select" here too meant Delete silently did nothing for a shape
+  // selected that way. Bare letter keys switch tools. Both are disabled
+  // while editing text or while any other input/textarea has focus, so
+  // typing a shape's name doesn't yank the active tool out from under you.
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (editingText) return;
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if ((e.key === "Delete" || e.key === "Backspace") && state.tool === "select" && state.selectedId) {
+      if ((e.key === "Delete" || e.key === "Backspace") && state.selectedId) {
         onStateChange(removeShape(state, state.selectedId));
         return;
       }
@@ -670,6 +705,8 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
                     stroke={shape.color}
                     strokeWidth={shape.strokeWidth}
                     fill={shape.color}
+                    lineCap="round"
+                    lineJoin="round"
                     hitStrokeWidth={Math.max(shape.strokeWidth, 16)}
                     draggable={draggable}
                     onClick={() => select(shape.id)}
@@ -685,9 +722,10 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
                       const leftY = y2 - headLength * Math.sin(angle - headAngle);
                       const rightX = x2 - headLength * Math.cos(angle + headAngle);
                       const rightY = y2 - headLength * Math.sin(angle + headAngle);
-                      const shaft = roughGenerator.line(x1, y1, x2, y2, { seed, roughness: 1.5, bowing: 1 });
-                      const headLeft = roughGenerator.line(x2, y2, leftX, leftY, { seed: seed + 1, roughness: 1.5, bowing: 1 });
-                      const headRight = roughGenerator.line(x2, y2, rightX, rightY, { seed: seed + 2, roughness: 1.5, bowing: 1 });
+                      const opts = { seed, roughness: ROUGH_ROUGHNESS, bowing: ROUGH_BOWING };
+                      const shaft = roughGenerator.line(x1, y1, x2, y2, opts);
+                      const headLeft = roughGenerator.line(x2, y2, leftX, leftY, { ...opts, seed: seed + 1 });
+                      const headRight = roughGenerator.line(x2, y2, rightX, rightY, { ...opts, seed: seed + 2 });
                       drawRoughDrawable(context, shapeNode, shaft, headLeft, headRight);
                     }}
                     {...((selected || hovered) ? SELECTED_SHADOW : {})}
@@ -711,6 +749,8 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
                     points={shape.points}
                     stroke={shape.color}
                     strokeWidth={shape.strokeWidth}
+                    lineCap="round"
+                    lineJoin="round"
                     hitStrokeWidth={Math.max(shape.strokeWidth, 16)}
                     draggable={draggable}
                     onClick={() => select(shape.id)}
@@ -720,8 +760,8 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
                       const [x1, y1, x2, y2] = shape.points;
                       const drawable = roughGenerator.line(x1, y1, x2, y2, {
                         seed: seedFromId(shape.id),
-                        roughness: 1.5,
-                        bowing: 1,
+                        roughness: ROUGH_ROUGHNESS,
+                        bowing: ROUGH_BOWING,
                       });
                       drawRoughDrawable(context, shapeNode, drawable);
                     }}
@@ -786,16 +826,17 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
                   height={shape.height}
                   stroke={shape.color}
                   strokeWidth={shape.strokeWidth}
+                  lineJoin="round"
                   draggable={draggable}
                   onClick={() => select(shape.id)}
                   onTap={() => select(shape.id)}
                   onDragEnd={(e) => onStateChange(updateShape(state, shape.id, { x: e.target.x(), y: e.target.y() }))}
                   onTransformEnd={(e) => handleBoxTransformEnd(shape, e.target)}
                   sceneFunc={(context, shapeNode) => {
-                    const drawable = roughGenerator.rectangle(0, 0, shape.width, shape.height, {
+                    const drawable = roughGenerator.path(roundedRectPath(shape.width, shape.height, 10), {
                       seed: seedFromId(shape.id),
-                      roughness: 1.8,
-                      bowing: 1.5,
+                      roughness: ROUGH_ROUGHNESS,
+                      bowing: ROUGH_BOWING,
                     });
                     drawRoughDrawable(context, shapeNode, drawable);
                   }}
@@ -827,6 +868,14 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
                     )
                   }
                   onTransformEnd={(e) => handleEllipseTransformEnd(shape, e.target as Konva.Ellipse)}
+                  sceneFunc={(context, shapeNode) => {
+                    const drawable = roughGenerator.ellipse(0, 0, Math.abs(shape.width), Math.abs(shape.height), {
+                      seed: seedFromId(shape.id),
+                      roughness: ROUGH_ROUGHNESS,
+                      bowing: ROUGH_BOWING,
+                    });
+                    drawRoughDrawable(context, shapeNode, drawable);
+                  }}
                   {...((selected || hovered) ? SELECTED_SHADOW : {})}
                 />
               );
