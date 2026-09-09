@@ -57,8 +57,8 @@ impl CredentialStore for KeyringCredentialStore {
     }
 
     fn set(&self, creds: &Credentials) -> Result<(), String> {
-        let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
-            .map_err(|e| e.to_string())?;
+        let entry =
+            keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).map_err(|e| e.to_string())?;
         let raw = serde_json::to_string(&(&creds.access_key_id, &creds.secret_access_key))
             .map_err(|e| e.to_string())?;
         entry.set_password(&raw).map_err(|e| e.to_string())
@@ -78,7 +78,10 @@ impl Serialize for Credentials {
 impl<'de> Deserialize<'de> for Credentials {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let (access_key_id, secret_access_key) = <(String, String)>::deserialize(d)?;
-        Ok(Credentials { access_key_id, secret_access_key })
+        Ok(Credentials {
+            access_key_id,
+            secret_access_key,
+        })
     }
 }
 
@@ -184,16 +187,25 @@ mod tests {
 
     impl FakeCredentialStore {
         fn new() -> Self {
-            FakeCredentialStore { store: Mutex::new(HashMap::new()) }
+            FakeCredentialStore {
+                store: Mutex::new(HashMap::new()),
+            }
         }
     }
 
     impl CredentialStore for FakeCredentialStore {
         fn get(&self) -> Option<Credentials> {
-            self.store.lock().unwrap().get("upload-credentials").cloned()
+            self.store
+                .lock()
+                .unwrap()
+                .get("upload-credentials")
+                .cloned()
         }
         fn set(&self, creds: &Credentials) -> Result<(), String> {
-            self.store.lock().unwrap().insert("upload-credentials", creds.clone());
+            self.store
+                .lock()
+                .unwrap()
+                .insert("upload-credentials", creds.clone());
             Ok(())
         }
     }

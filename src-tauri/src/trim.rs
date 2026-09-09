@@ -42,7 +42,12 @@ mod tests {
 
     #[test]
     fn includes_input_and_output_paths() {
-        let args = build_trim_args(Path::new("/tmp/in.mp4"), Path::new("/tmp/out.mp4"), 1.0, 5.0);
+        let args = build_trim_args(
+            Path::new("/tmp/in.mp4"),
+            Path::new("/tmp/out.mp4"),
+            1.0,
+            5.0,
+        );
         let joined = args.join(" ");
         assert!(joined.contains("/tmp/in.mp4"));
         assert!(joined.ends_with("/tmp/out.mp4"));
@@ -50,7 +55,12 @@ mod tests {
 
     #[test]
     fn uses_ss_and_to_for_the_trim_range() {
-        let args = build_trim_args(Path::new("/tmp/in.mp4"), Path::new("/tmp/out.mp4"), 2.5, 7.25);
+        let args = build_trim_args(
+            Path::new("/tmp/in.mp4"),
+            Path::new("/tmp/out.mp4"),
+            2.5,
+            7.25,
+        );
         let joined = args.join(" ");
         assert!(joined.contains("-ss 2.5"));
         assert!(joined.contains("-to 7.25"));
@@ -60,7 +70,12 @@ mod tests {
     fn never_uses_stream_copy() {
         // Frame-accurate trim per the global constraint: must re-encode,
         // never `-c copy` (which would snap to the nearest keyframe).
-        let args = build_trim_args(Path::new("/tmp/in.mp4"), Path::new("/tmp/out.mp4"), 0.0, 3.0);
+        let args = build_trim_args(
+            Path::new("/tmp/in.mp4"),
+            Path::new("/tmp/out.mp4"),
+            0.0,
+            3.0,
+        );
         assert!(!args.iter().any(|a| a == "copy"));
     }
 }

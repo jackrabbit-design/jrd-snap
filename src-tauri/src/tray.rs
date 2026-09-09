@@ -25,14 +25,46 @@ fn current_hotkeys(app: &AppHandle) -> HotkeySettings {
 
 pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let hotkeys = current_hotkeys(app);
-    let capture_area = MenuItem::with_id(app, "capture_area", "Capture Area", true, Some(&hotkeys.capture_area))?;
-    let capture_full =
-        MenuItem::with_id(app, "capture_full", "Capture Full Screen", true, Some(&hotkeys.capture_full))?;
-    let record_area = MenuItem::with_id(app, "record_area", "Record Area", true, Some(&hotkeys.record_area))?;
-    let stop_recording = MenuItem::with_id(app, "stop_recording", "Stop Recording", false, None::<&str>)?;
-    let reopen_last_capture = MenuItem::with_id(app, "reopen_last_capture", "Reopen Last Capture", false, None::<&str>)?;
-    let recent_captures = MenuItem::with_id(app, "recent_captures", "Recent Captures", true, None::<&str>)?;
+    let capture_area = MenuItem::with_id(
+        app,
+        "capture_area",
+        "Capture Area",
+        true,
+        Some(&hotkeys.capture_area),
+    )?;
+    let capture_full = MenuItem::with_id(
+        app,
+        "capture_full",
+        "Capture Full Screen",
+        true,
+        Some(&hotkeys.capture_full),
+    )?;
+    let record_area = MenuItem::with_id(
+        app,
+        "record_area",
+        "Record Area",
+        true,
+        Some(&hotkeys.record_area),
+    )?;
+    let stop_recording =
+        MenuItem::with_id(app, "stop_recording", "Stop Recording", false, None::<&str>)?;
+    let reopen_last_capture = MenuItem::with_id(
+        app,
+        "reopen_last_capture",
+        "Reopen Last Capture",
+        false,
+        None::<&str>,
+    )?;
+    let recent_captures = MenuItem::with_id(
+        app,
+        "recent_captures",
+        "Recent Captures",
+        true,
+        None::<&str>,
+    )?;
     let settings = MenuItem::with_id(app, "open_settings", "Settings", true, None::<&str>)?;
+    let check_for_updates =
+        MenuItem::with_id(app, "check_for_updates", "Check for Updates…", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
     let menu = Menu::with_items(
@@ -45,6 +77,7 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             &reopen_last_capture,
             &recent_captures,
             &settings,
+            &check_for_updates,
             &quit,
         ],
     )?;
@@ -87,7 +120,9 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
                 let result = app
                     .cursor_position()
                     .map_err(|e| e.to_string())
-                    .and_then(|cursor| crate::commands::monitor_index_at(app, cursor.x as i32, cursor.y as i32))
+                    .and_then(|cursor| {
+                        crate::commands::monitor_index_at(app, cursor.x as i32, cursor.y as i32)
+                    })
                     .and_then(crate::capture::capture_full_screen_png);
                 match result {
                     Ok(bytes) => crate::open_editor_with_png(app, bytes),
@@ -122,6 +157,9 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
                     let _ = win.set_focus();
                 }
             }
+            "check_for_updates" => {
+                crate::updater::check_for_updates(app.clone());
+            }
             "quit" => {
                 let state = app.state::<crate::recording::RecordingState>();
                 if let Some((child, _path, started_at)) = state.0.lock().unwrap().take() {
@@ -144,7 +182,13 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
 // whatever the hotkeys were then.
 pub(crate) fn update_tray_accelerators(app: &AppHandle, hotkeys: &HotkeySettings) {
     let items = app.state::<TrayMenuItems>();
-    let _ = items.capture_area.set_accelerator(Some(&hotkeys.capture_area));
-    let _ = items.capture_full.set_accelerator(Some(&hotkeys.capture_full));
-    let _ = items.record_area.set_accelerator(Some(&hotkeys.record_area));
+    let _ = items
+        .capture_area
+        .set_accelerator(Some(&hotkeys.capture_area));
+    let _ = items
+        .capture_full
+        .set_accelerator(Some(&hotkeys.capture_full));
+    let _ = items
+        .record_area
+        .set_accelerator(Some(&hotkeys.record_area));
 }

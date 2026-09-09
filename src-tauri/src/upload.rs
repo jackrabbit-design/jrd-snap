@@ -27,7 +27,13 @@ pub async fn upload_object(
     bytes: Vec<u8>,
     content_type: &str,
 ) -> Result<(), String> {
-    let aws_creds = AwsCredentials::new(&creds.access_key_id, &creds.secret_access_key, None, None, "snap");
+    let aws_creds = AwsCredentials::new(
+        &creds.access_key_id,
+        &creds.secret_access_key,
+        None,
+        None,
+        "snap",
+    );
     let mut config_builder = aws_sdk_s3::config::Builder::new()
         .region(Region::new(settings.region.clone()))
         .credentials_provider(aws_creds)
@@ -114,13 +120,19 @@ mod tests {
     #[test]
     fn s3_url_uses_virtual_hosted_style() {
         let url = build_public_url(&s3_settings(), "abc123.png");
-        assert_eq!(url, "https://my-bucket.s3.us-east-1.amazonaws.com/abc123.png");
+        assert_eq!(
+            url,
+            "https://my-bucket.s3.us-east-1.amazonaws.com/abc123.png"
+        );
     }
 
     #[test]
     fn spaces_url_uses_bucket_dot_endpoint() {
         let url = build_public_url(&spaces_settings(), "abc123.png");
-        assert_eq!(url, "https://my-space.nyc3.digitaloceanspaces.com/abc123.png");
+        assert_eq!(
+            url,
+            "https://my-space.nyc3.digitaloceanspaces.com/abc123.png"
+        );
     }
 
     #[test]

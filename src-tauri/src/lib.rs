@@ -1,13 +1,14 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-mod tray;
 mod capture;
+mod commands;
 mod filename;
 mod object_key;
-mod settings;
-mod commands;
-mod upload;
 mod recording;
+mod settings;
+mod tray;
 mod trim;
+mod updater;
+mod upload;
 
 use tauri::{Emitter, Listener, Manager, PhysicalPosition, PhysicalSize, Position, Size};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
@@ -161,7 +162,10 @@ pub(crate) fn show_recording_controls(
     let x = origin_x + region.x;
     let y = origin_y + region.y + region.height as i32 + 12;
     let _ = win.set_position(Position::Physical(PhysicalPosition::new(x, y)));
-    let _ = win.set_size(Size::Physical(PhysicalSize::new(width as u32, height as u32)));
+    let _ = win.set_size(Size::Physical(PhysicalSize::new(
+        width as u32,
+        height as u32,
+    )));
     let _ = win.show();
 }
 
@@ -207,7 +211,10 @@ pub(crate) fn set_recording_tray_state(app: &tauri::AppHandle, recording: bool) 
 /// own, that's a crash: notify, reset the tray, and discard the resulting
 /// file (it's necessarily incomplete/corrupt, so no editor should open for
 /// it, per the design spec's crash-handling requirement).
-pub(crate) fn monitor_recording_for_crash(app: &tauri::AppHandle, expected_path: std::path::PathBuf) {
+pub(crate) fn monitor_recording_for_crash(
+    app: &tauri::AppHandle,
+    expected_path: std::path::PathBuf,
+) {
     loop {
         std::thread::sleep(std::time::Duration::from_millis(500));
         let state = app.state::<recording::RecordingState>();
@@ -254,7 +261,9 @@ pub(crate) fn set_reopen_enabled(app: &tauri::AppHandle, enabled: bool) {
 
 pub(crate) fn open_editor_with_video(app: &tauri::AppHandle, video_path: &std::path::Path) {
     let state = app.state::<LastCaptureState>();
-    *state.0.lock().unwrap() = Some(LastCapture::Video { path: video_path.to_path_buf() });
+    *state.0.lock().unwrap() = Some(LastCapture::Video {
+        path: video_path.to_path_buf(),
+    });
     set_reopen_enabled(app, true);
     if let Some(win) = app.get_webview_window("editor") {
         if let Err(e) = win.show() {
@@ -263,7 +272,11 @@ pub(crate) fn open_editor_with_video(app: &tauri::AppHandle, video_path: &std::p
         if let Err(e) = win.set_focus() {
             eprintln!("failed to focus editor window: {e}");
         }
-        if let Err(e) = app.emit_to("editor", "editor-load-video", video_path.to_string_lossy().to_string()) {
+        if let Err(e) = app.emit_to(
+            "editor",
+            "editor-load-video",
+            video_path.to_string_lossy().to_string(),
+        ) {
             eprintln!("failed to emit editor-load-video: {e}");
         }
     } else {
@@ -275,7 +288,9 @@ pub(crate) fn open_editor_with_png(app: &tauri::AppHandle, png_bytes: Vec<u8>) {
     use base64::Engine;
     let b64 = base64::engine::general_purpose::STANDARD.encode(&png_bytes);
     let state = app.state::<LastCaptureState>();
-    *state.0.lock().unwrap() = Some(LastCapture::Image { png_base64: b64.clone() });
+    *state.0.lock().unwrap() = Some(LastCapture::Image {
+        png_base64: b64.clone(),
+    });
     set_reopen_enabled(app, true);
     if let Some(win) = app.get_webview_window("editor") {
         if let Err(e) = win.show() {
@@ -332,7 +347,9 @@ pub struct CaptureHistoryEntry {
     pub timestamp_ms: u64,
 }
 
-pub struct CaptureHistoryState(pub std::sync::Mutex<std::collections::VecDeque<CaptureHistoryEntry>>);
+pub struct CaptureHistoryState(
+    pub std::sync::Mutex<std::collections::VecDeque<CaptureHistoryEntry>>,
+);
 
 impl Default for CaptureHistoryState {
     fn default() -> Self {
@@ -345,14 +362,25 @@ impl Default for CaptureHistoryState {
 // (client-side, from whatever it already has in memory for the upload) and
 // hands it here alongside the resulting URL; this just keeps the bounded
 // most-recent-6 list and notifies the history window if it's open.
-pub(crate) fn record_capture_history(app: &tauri::AppHandle, kind: String, url: String, thumbnail: String) {
+pub(crate) fn record_capture_history(
+    app: &tauri::AppHandle,
+    kind: String,
+    url: String,
+    thumbnail: String,
+) {
     let timestamp_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
     let state = app.state::<CaptureHistoryState>();
     let mut history = state.0.lock().unwrap();
-    history.push_front(CaptureHistoryEntry { id: nanoid::nanoid!(8), kind, url, thumbnail, timestamp_ms });
+    history.push_front(CaptureHistoryEntry {
+        id: nanoid::nanoid!(8),
+        kind,
+        url,
+        thumbnail,
+        timestamp_ms,
+    });
     history.truncate(CAPTURE_HISTORY_LIMIT);
     let snapshot: Vec<CaptureHistoryEntry> = history.iter().cloned().collect();
     drop(history);
@@ -362,6 +390,7 @@ pub(crate) fn record_capture_history(app: &tauri::AppHandle, kind: String, url: 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
@@ -481,7 +510,9 @@ pub fn run() {
                 let result = handle
                     .cursor_position()
                     .map_err(|e| e.to_string())
-                    .and_then(|cursor| commands::monitor_index_at(&handle, cursor.x as i32, cursor.y as i32))
+                    .and_then(|cursor| {
+                        commands::monitor_index_at(&handle, cursor.x as i32, cursor.y as i32)
+                    })
                     .and_then(capture::capture_full_screen_png);
                 match result {
                     Ok(bytes) => open_editor_with_png(&handle, bytes),
@@ -527,7 +558,10 @@ pub fn run() {
                     match recording::stop_recording(child, started_at) {
                         Ok(()) => open_editor_with_video(&handle7, &output_path),
                         Err(e) => {
-                            notify_capture_failed(&handle7, &format!("failed to stop recording: {e}"));
+                            notify_capture_failed(
+                                &handle7,
+                                &format!("failed to stop recording: {e}"),
+                            );
                             set_capture_tray_icon(&handle7, CaptureIconState::Default);
                         }
                     }

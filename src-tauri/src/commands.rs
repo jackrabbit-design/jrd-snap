@@ -7,7 +7,8 @@ use crate::settings::{
 };
 use crate::upload::{build_public_url, upload_object};
 use tauri::{
-    AppHandle, Emitter, Manager, Position, Size, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    AppHandle, Emitter, Manager, Position, Size, State, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder,
 };
 
 #[tauri::command]
@@ -24,7 +25,10 @@ pub fn save_upload_settings(app: AppHandle, settings: UploadSettings) -> Result<
 
 #[tauri::command]
 pub fn save_credentials(access_key_id: String, secret_access_key: String) -> Result<(), String> {
-    KeyringCredentialStore.set(&Credentials { access_key_id, secret_access_key })
+    KeyringCredentialStore.set(&Credentials {
+        access_key_id,
+        secret_access_key,
+    })
 }
 
 #[tauri::command]
@@ -108,15 +112,19 @@ pub(crate) fn ensure_overlay_windows(app: &AppHandle) -> Result<Vec<WebviewWindo
         let label = overlay_label(index);
         let win = match app.get_webview_window(&label) {
             Some(win) => win,
-            None => WebviewWindowBuilder::new(app, &label, WebviewUrl::App("index.html#/overlay".into()))
-                .decorations(false)
-                .transparent(true)
-                .shadow(false)
-                .always_on_top(true)
-                .skip_taskbar(true)
-                .visible(false)
-                .build()
-                .map_err(|e| e.to_string())?,
+            None => WebviewWindowBuilder::new(
+                app,
+                &label,
+                WebviewUrl::App("index.html#/overlay".into()),
+            )
+            .decorations(false)
+            .transparent(true)
+            .shadow(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .visible(false)
+            .build()
+            .map_err(|e| e.to_string())?,
         };
         win.set_position(Position::Physical(*monitor.position()))
             .map_err(|e| e.to_string())?;
@@ -305,7 +313,11 @@ async fn upload_bytes(app: &AppHandle, bytes: Vec<u8>, extension: &str) -> Resul
 }
 
 #[tauri::command]
-pub async fn upload_file(app: AppHandle, bytes: Vec<u8>, extension: String) -> Result<String, String> {
+pub async fn upload_file(
+    app: AppHandle,
+    bytes: Vec<u8>,
+    extension: String,
+) -> Result<String, String> {
     upload_bytes(&app, bytes, &extension).await
 }
 
@@ -386,12 +398,21 @@ pub fn start_recording_command(
     // through so start_recording can scale the captured video back down to
     // 1x before encoding, matching the size it'll actually be viewed at
     // instead of uploading it at 2x/3x the necessary resolution.
-    let scale_factor = tauri_monitors.get(monitor_index).map(|m| m.scale_factor()).unwrap_or(1.0);
+    let scale_factor = tauri_monitors
+        .get(monitor_index)
+        .map(|m| m.scale_factor())
+        .unwrap_or(1.0);
     eprintln!(
         "start_recording_command: region={region:?}, monitor_index={monitor_index}, tauri_size={tauri_size:?}, scale_factor={scale_factor}, {}",
         capture::monitor_debug_info(monitor_index).unwrap_or_else(|e| format!("monitor_debug_info failed: {e}"))
     );
-    let child = match recording::start_recording(region, mic_enabled, &output_path, monitor_index, scale_factor) {
+    let child = match recording::start_recording(
+        region,
+        mic_enabled,
+        &output_path,
+        monitor_index,
+        scale_factor,
+    ) {
         Ok(child) => child,
         Err(e) => {
             crate::notify_capture_failed(app, &format!("failed to start recording: {e}"));
@@ -426,7 +447,9 @@ pub fn stop_recording_command(state: State<RecordingState>) -> Result<(), String
 // recordings or leave a lot of empty space for small ones.
 #[tauri::command]
 pub fn resize_editor_window(app: AppHandle, width: f64, height: f64) -> Result<(), String> {
-    let win = app.get_webview_window("editor").ok_or("editor window missing")?;
+    let win = app
+        .get_webview_window("editor")
+        .ok_or("editor window missing")?;
     // Deliberately not re-centering: NSWindow's center() centers on the
     // *main* screen rather than the window's own screen if the window isn't
     // considered fully settled at that exact moment (e.g. right after a
@@ -440,7 +463,9 @@ pub fn resize_editor_window(app: AppHandle, width: f64, height: f64) -> Result<(
 
 #[tauri::command]
 pub fn reopen_last_capture(app: AppHandle) -> Result<(), String> {
-    let win = app.get_webview_window("editor").ok_or("editor window missing")?;
+    let win = app
+        .get_webview_window("editor")
+        .ok_or("editor window missing")?;
     win.show().map_err(|e| e.to_string())?;
     win.set_focus().map_err(|e| e.to_string())?;
     crate::set_capture_tray_icon(&app, crate::CaptureIconState::Progress);
@@ -479,12 +504,12 @@ pub fn get_last_capture(app: AppHandle) -> Option<LastCapturePayload> {
     let state = app.state::<crate::LastCaptureState>();
     let guard = state.0.lock().unwrap();
     guard.as_ref().map(|c| match c {
-        crate::LastCapture::Image { png_base64 } => {
-            LastCapturePayload::Image { png_base64: png_base64.clone() }
-        }
-        crate::LastCapture::Video { path } => {
-            LastCapturePayload::Video { path: path.to_string_lossy().to_string() }
-        }
+        crate::LastCapture::Image { png_base64 } => LastCapturePayload::Image {
+            png_base64: png_base64.clone(),
+        },
+        crate::LastCapture::Video { path } => LastCapturePayload::Video {
+            path: path.to_string_lossy().to_string(),
+        },
     })
 }
 

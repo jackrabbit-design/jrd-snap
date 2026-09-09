@@ -90,6 +90,15 @@
     "externalBin": ["binaries/ffmpeg"],
     "macOS": {
       "signingIdentity": "Snap Local Code Signing"
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU1ODBCNTM5MThCM0Y2OTYKUldTVzlyTVlPYldBNVlaazJVWmlDMkp5VjZUaE9BRmRla3Fwa1V6QzhZSjg0c0FRcTZtRng4amgK",
+      "endpoints": [
+        "https://github.com/jackrabbit-design/jrd-snap/releases/latest/download/latest.json"
+      ]
     }
   }
 }

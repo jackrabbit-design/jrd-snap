@@ -83,7 +83,9 @@ mod tests {
     fn ids_are_url_safe() {
         let name = generate_filename(None, "png");
         let stem = name.trim_end_matches(".png");
-        assert!(stem.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'));
+        assert!(stem
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'));
     }
 
     #[test]

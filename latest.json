@@ -1,0 +1,15 @@
+{
+  "version": "0.4.0",
+  "notes": "Snap 0.4.0",
+  "pub_date": "2026-09-09T16:01:55Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTVzlyTVlPYldBNVo3T09JSCtNSi9hWVJUMGxEQllpVkJqWGxlSmxhZ3dzZGNKWE5xTHY0eWo0enpyVkVHL2dQWTZDVEp5Vm5OMk01cExqWjV5VWpJNWJqdFlQS3Zjc2dFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4OTY5NjM3CWZpbGU6U25hcC5hcHAudGFyLmd6CjdXbXlYck4rcm1BUjJkMVpxQUpLYXF3U2M5d3V2M0ZIT1VpMUQ3d2JYRUd6QmhNV0J6M1h3a2MwNDA1bU1peFEzaVRweEp3TW0wU1RNNUNDSE4rZEFRPT0K",
+      "url": "https://github.com/jackrabbit-design/jrd-snap/releases/download/0.4.0/Snap_aarch64.app.tar.gz"
+    },
+    "darwin-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTVzlyTVlPYldBNWZSYjNUdXB5dWNiK3pBZk1vSnAwN0hvendpU2dXMGpLamZrVWsrWmFQT201M2tseUNieVdTVWt4c1h3OUxnNVR1OEtwOVA1OW5uekNJR3JkS2VLREFjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4OTY5NjgyCWZpbGU6U25hcC5hcHAudGFyLmd6CkpVa1BVeW02UWtvUU5kMzdmYkVKRFYvQUs2aVd1VXFVL1l6TWh6T3RWUExJK0Z0UHZsNTcwYTlIMjNhckZoNlFXRDBQOEI4YndIUUNXVlhsQ2d4b0R3PT0K",
+      "url": "https://github.com/jackrabbit-design/jrd-snap/releases/download/0.4.0/Snap_x86_64.app.tar.gz"
+    }
+  }
+}

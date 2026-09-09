@@ -23,8 +23,11 @@ pub fn crop_to_rect(
 
 pub fn encode_png(img: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> Result<Vec<u8>, String> {
     let mut bytes: Vec<u8> = Vec::new();
-    img.write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Png)
-        .map_err(|e| e.to_string())?;
+    img.write_to(
+        &mut std::io::Cursor::new(&mut bytes),
+        image::ImageFormat::Png,
+    )
+    .map_err(|e| e.to_string())?;
     Ok(bytes)
 }
 
@@ -71,7 +74,13 @@ pub fn monitor_debug_info(monitor_index: usize) -> Result<String, String> {
     let img = monitor.capture_image().map_err(|e| e.to_string())?;
     Ok(format!(
         "xcap claims x={} y={} w={} h={} scale_factor={}; actual capture_image() is {}x{}",
-        claimed.0, claimed.1, claimed.2, claimed.3, scale, img.width(), img.height(),
+        claimed.0,
+        claimed.1,
+        claimed.2,
+        claimed.3,
+        scale,
+        img.width(),
+        img.height(),
     ))
 }
 
@@ -101,7 +110,15 @@ mod tests {
     #[test]
     fn crop_produces_requested_dimensions() {
         let full = solid_image(200, 100);
-        let cropped = crop_to_rect(&full, CaptureRect { x: 10, y: 10, width: 50, height: 30 });
+        let cropped = crop_to_rect(
+            &full,
+            CaptureRect {
+                x: 10,
+                y: 10,
+                width: 50,
+                height: 30,
+            },
+        );
         assert_eq!(cropped.width(), 50);
         assert_eq!(cropped.height(), 30);
     }
@@ -109,7 +126,15 @@ mod tests {
     #[test]
     fn crop_clamps_to_image_bounds() {
         let full = solid_image(100, 100);
-        let cropped = crop_to_rect(&full, CaptureRect { x: 90, y: 90, width: 50, height: 50 });
+        let cropped = crop_to_rect(
+            &full,
+            CaptureRect {
+                x: 90,
+                y: 90,
+                width: 50,
+                height: 50,
+            },
+        );
         assert_eq!(cropped.width(), 10);
         assert_eq!(cropped.height(), 10);
     }
@@ -117,7 +142,15 @@ mod tests {
     #[test]
     fn crop_preserves_pixel_content() {
         let full = solid_image(100, 100);
-        let cropped = crop_to_rect(&full, CaptureRect { x: 5, y: 5, width: 10, height: 10 });
+        let cropped = crop_to_rect(
+            &full,
+            CaptureRect {
+                x: 5,
+                y: 5,
+                width: 10,
+                height: 10,
+            },
+        );
         assert_eq!(cropped.get_pixel(0, 0), full.get_pixel(5, 5));
     }
 

@@ -169,7 +169,8 @@ fn parse_screen_device_index(stderr_text: &str, target: usize) -> Result<String,
             }
         }
     }
-    fallback.ok_or_else(|| "no \"Capture screen\" device found in avfoundation device list".to_string())
+    fallback
+        .ok_or_else(|| "no \"Capture screen\" device found in avfoundation device list".to_string())
 }
 
 /// Discovers the real avfoundation device index for the given monitor by
@@ -247,7 +248,13 @@ pub fn start_recording(
         );
     }
 
-    let args = build_capture_args(region, mic_enabled, output_path, &screen_device_index, scale_factor);
+    let args = build_capture_args(
+        region,
+        mic_enabled,
+        output_path,
+        &screen_device_index,
+        scale_factor,
+    );
     eprintln!("starting ffmpeg: {}", args.join(" "));
     let mut child = FfmpegCommand::new()
         .args(&args)
@@ -266,9 +273,7 @@ pub fn start_recording(
     // requested once — merely calling `.iter()` and dropping the result
     // would still block the reader thread on its first send.
     if let Ok(events) = child.iter() {
-        std::thread::spawn(move || {
-            for _event in events {}
-        });
+        std::thread::spawn(move || for _event in events {});
     }
 
     Ok(child)
@@ -284,7 +289,10 @@ pub fn start_recording(
 // clean one was achievable just by waiting a moment longer.
 const MIN_RECORDING_DURATION: std::time::Duration = std::time::Duration::from_secs(2);
 
-pub fn stop_recording(mut child: FfmpegChild, started_at: std::time::Instant) -> Result<(), String> {
+pub fn stop_recording(
+    mut child: FfmpegChild,
+    started_at: std::time::Instant,
+) -> Result<(), String> {
     let elapsed = started_at.elapsed();
     if elapsed < MIN_RECORDING_DURATION {
         std::thread::sleep(MIN_RECORDING_DURATION - elapsed);
@@ -307,11 +315,17 @@ pub fn stop_recording(mut child: FfmpegChild, started_at: std::time::Instant) ->
     loop {
         match child.as_inner_mut().try_wait().map_err(|e| e.to_string())? {
             Some(_) => {
-                eprintln!("ffmpeg exited {:.1}s after the quit signal", wait_start.elapsed().as_secs_f32());
+                eprintln!(
+                    "ffmpeg exited {:.1}s after the quit signal",
+                    wait_start.elapsed().as_secs_f32()
+                );
                 return Ok(());
             }
             None if std::time::Instant::now() >= deadline => {
-                eprintln!("ffmpeg still hadn't exited {:.1}s after the quit signal; killing it", wait_start.elapsed().as_secs_f32());
+                eprintln!(
+                    "ffmpeg still hadn't exited {:.1}s after the quit signal; killing it",
+                    wait_start.elapsed().as_secs_f32()
+                );
                 child.kill().map_err(|e| e.to_string())?;
                 child.wait().map_err(|e| e.to_string())?;
                 return Ok(());
@@ -337,7 +351,12 @@ mod tests {
 
     #[test]
     fn area_region_adds_a_crop_filter_with_the_right_dimensions() {
-        let region = CaptureRegion { x: 10, y: 20, width: 300, height: 200 };
+        let region = CaptureRegion {
+            x: 10,
+            y: 20,
+            width: 300,
+            height: 200,
+        };
         let args = build_capture_args(Some(region), false, Path::new("/tmp/out.mp4"), "1", 1.0);
         let joined = args.join(" ");
         assert!(joined.contains("crop=300:200:10:20"));
@@ -373,10 +392,18 @@ mod tests {
 
     #[test]
     fn crop_and_scale_filters_are_combined_in_one_vf() {
-        let region = CaptureRegion { x: 10, y: 20, width: 300, height: 200 };
+        let region = CaptureRegion {
+            x: 10,
+            y: 20,
+            width: 300,
+            height: 200,
+        };
         let args = build_capture_args(Some(region), false, Path::new("/tmp/out.mp4"), "1", 2.0);
         let vf_index = args.iter().position(|a| a == "-vf").expect("-vf present");
-        assert_eq!(args[vf_index + 1], "crop=300:200:10:20,scale=trunc(iw/2/2)*2:trunc(ih/2/2)*2");
+        assert_eq!(
+            args[vf_index + 1],
+            "crop=300:200:10:20,scale=trunc(iw/2/2)*2:trunc(ih/2/2)*2"
+        );
     }
 
     // Real stderr captured on a dev machine by running:
@@ -386,7 +413,8 @@ mod tests {
     // the commonly-assumed index 1 — the exact motivating case for this
     // discovery function.
     #[cfg(target_os = "macos")]
-    const SAMPLE_AVFOUNDATION_STDERR: &str = "ffmpeg version 8.1 Copyright (c) 2000-2026 the FFmpeg developers\n\
+    const SAMPLE_AVFOUNDATION_STDERR: &str =
+        "ffmpeg version 8.1 Copyright (c) 2000-2026 the FFmpeg developers\n\
 [AVFoundation indev @ 0x7f4c1c140] AVFoundation video devices:\n\
 [AVFoundation indev @ 0x7f4c1c140] [0] MacBook Pro Camera\n\
 [AVFoundation indev @ 0x7f4c1c140] [1] iChris Camera\n\
@@ -461,7 +489,11 @@ mod manual_e2e_check {
         stop_recording(child, started_at).unwrap();
 
         let metadata = std::fs::metadata(&output_path).unwrap();
-        eprintln!("output file: {} ({} bytes)", output_path.display(), metadata.len());
+        eprintln!(
+            "output file: {} ({} bytes)",
+            output_path.display(),
+            metadata.len()
+        );
         assert!(metadata.len() > 0);
     }
 }
