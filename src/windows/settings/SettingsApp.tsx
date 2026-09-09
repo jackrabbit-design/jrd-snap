@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import HotkeyConfigForm from "./HotkeyConfigForm";
 import UploadConfigForm from "./UploadConfigForm";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getVersion } from "@tauri-apps/api/app";
 
 const appWindow = getCurrentWindow();
 
@@ -14,6 +15,11 @@ type TabKey = (typeof TABS)[number]["key"];
 
 export default function SettingsApp() {
   const [tab, setTab] = useState<TabKey>("connection");
+  const [version, setVersion] = useState("");
+
+  useEffect(() => {
+    getVersion().then(setVersion);
+  }, []);
 
   return (
     <div className="settings-page">
@@ -36,6 +42,7 @@ export default function SettingsApp() {
       </div>
       {tab === "connection" && <UploadConfigForm />}
       {tab === "hotkeys" && <HotkeyConfigForm />}
+      <div className="settings-version">Snap {version}</div>
     </div>
   );
 }
