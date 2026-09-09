@@ -1,0 +1,109 @@
+name: Release
+
+# Tags in this repo are bare semver (e.g. "0.4.0", not "v0.4.0") — matches
+# that convention. Also runnable by hand from the Actions tab to retry a
+# failed release without needing to re-tag.
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # Apple Silicon runner — required for build-ffmpeg.sh, which cross-
+    # compiles the x86_64 ffmpeg binary FROM arm64 the same way it's done
+    # locally (see that script's own comments). Building on an x86_64
+    # runner would need the reverse cross-compile direction, untested.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Keyed on the script's own hash — only rebuilds ffmpeg when the
+      # build recipe actually changes, not on every release.
+      - name: Cache built ffmpeg sidecars
+        id: ffmpeg-cache
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/binaries/ffmpeg-*
+          key: ffmpeg-sidecars-${{ hashFiles('src-tauri/scripts/build-ffmpeg.sh') }}
+
+      - name: Install ffmpeg build dependencies
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        run: brew install nasm pkg-config x264
+
+      - name: Build ffmpeg sidecars (both architectures)
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        run: bash src-tauri/scripts/build-ffmpeg.sh
+
+      # Standard recipe for using a codesigning identity in CI: import into
+      # a throwaway keychain (the runner is destroyed after the job anyway)
+      # and grant codesign non-interactive access via the partition list —
+      # importing alone isn't enough on a *freshly created* keychain the
+      # way it is on an already-unlocked login keychain.
+      - name: Import code-signing certificate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 24)
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security list-keychain -d user -s "$KEYCHAIN_PATH" "$(security list-keychains -d user | sed 's/"//g')"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      - name: Build aarch64
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri build -- --target aarch64-apple-darwin
+
+      - name: Build x86_64
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri build -- --target x86_64-apple-darwin
+
+      - name: Assemble release assets
+        env:
+          VERSION: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          mkdir -p release-assets
+          cp src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg release-assets/
+          cp src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg release-assets/
+          cp src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Snap.app.tar.gz release-assets/Snap_aarch64.app.tar.gz
+          cp src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Snap.app.tar.gz.sig release-assets/Snap_aarch64.app.tar.gz.sig
+          cp src-tauri/target/x86_64-apple-darwin/release/bundle/macos/Snap.app.tar.gz release-assets/Snap_x86_64.app.tar.gz
+          cp src-tauri/target/x86_64-apple-darwin/release/bundle/macos/Snap.app.tar.gz.sig release-assets/Snap_x86_64.app.tar.gz.sig
+          bash src-tauri/scripts/generate-latest-json.sh "$VERSION" "$REPO" > release-assets/latest.json
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          files: release-assets/*
+          generate_release_notes: true
