@@ -55,14 +55,6 @@ function SaveIcon() {
 
 const appWindow = getCurrentWindow();
 
-document.getElementById('titlebar-minimize')?.addEventListener('click', () => {
-  appWindow.minimize();
-});
-
-document.getElementById('titlebar-close')?.addEventListener('click', () => {
-  appWindow.close();
-});
-
 // Undo/redo for `state` (shapes/tool/selection) — kept as a reducer rather
 // than plain useState + a ref-tracked undo stack because that first version
 // had a real race: undo()/redo() read `history`/`future`/`state` straight
@@ -525,9 +517,9 @@ export default function EditorApp() {
     return (
       <div className="editor-page">
         <div className="editor-header-row editor-actions" data-tauri-drag-region>
-          <div className="titlebar-controls">
-            <button id="titlebar-close" className="control-btn close-btn" title="Close Window"></button>
-            <button id="titlebar-minimize" className="control-btn min-btn" title="Minimize Window"></button>
+          <div className="titlebar-controls video-titlebar">
+            <button type="button" className="control-btn close-btn" title="Close Window" onClick={() => appWindow.close()}></button>
+            <button type="button" className="control-btn min-btn" title="Minimize Window" onClick={() => appWindow.minimize()}></button>
           </div>
           <div style={{ flex: 1, pointerEvents: "none" }} />
           <button type="button" className="button" title="Save to file" onClick={handleSaveVideoLocally} disabled={uploading || saving}>
@@ -566,8 +558,8 @@ export default function EditorApp() {
     <div className={`editor-page${fading ? " editor-fading" : ""}`}>
       <div className="editor-header-row editor-toolbar-row" data-tauri-drag-region>
         <div className="titlebar-controls">
-          <button id="titlebar-close" className="control-btn close-btn" title="Close Window"></button>
-          <button id="titlebar-minimize" className="control-btn min-btn" title="Minimize Window"></button>
+          <button type="button" className="control-btn close-btn" title="Close Window" onClick={() => appWindow.close()}></button>
+          <button type="button" className="control-btn min-btn" title="Minimize Window" onClick={() => appWindow.minimize()}></button>
         </div>
 
         <Toolbar

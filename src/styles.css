@@ -428,7 +428,10 @@ input[type="checkbox"]:checked::after {
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
   .titlebar-controls {
-    padding: 0 7px;
+    padding: 0 15px;
+    &.video-titlebar {
+      padding: 0 7px;
+    }
   }
 }
 

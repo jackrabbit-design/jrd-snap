@@ -6,14 +6,6 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 
 const appWindow = getCurrentWindow();
 
-document.getElementById('titlebar-minimize')?.addEventListener('click', () => {
-  appWindow.minimize();
-});
-
-document.getElementById('titlebar-close')?.addEventListener('click', () => {
-  appWindow.close();
-});
-
 function formatTimestamp(timestampMs: number): string {
   const date = new Date(timestampMs);
   const minutes = date.getMinutes().toString().padStart(2, "0");
@@ -48,10 +40,10 @@ export default function HistoryApp() {
 
   return (
     <div className="history-page">
-      <div className="history-header editor-toolbar-row">
+      <div className="history-header editor-toolbar-row" data-tauri-drag-region>
         <div className="titlebar-controls">
-          <button type="button" id="titlebar-close" className="control-btn close-btn" title="Close Window"></button>
-          <button type="button" id="titlebar-minimize" className="control-btn min-btn" title="Minimize Window"></button>
+          <button type="button" className="control-btn close-btn" title="Close Window" onClick={() => appWindow.close()}></button>
+          <button type="button" className="control-btn min-btn" title="Minimize Window" onClick={() => appWindow.minimize()}></button>
         </div>
         <h2>Recent Captures</h2>
       </div>
