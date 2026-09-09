@@ -2,6 +2,17 @@ import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { getCaptureHistory, type CaptureHistoryEntry } from "../../lib/api";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+
+const appWindow = getCurrentWindow();
+
+document.getElementById('titlebar-minimize')?.addEventListener('click', () => {
+  appWindow.minimize();
+});
+
+document.getElementById('titlebar-close')?.addEventListener('click', () => {
+  appWindow.close();
+});
 
 function formatTimestamp(timestampMs: number): string {
   const date = new Date(timestampMs);
@@ -37,7 +48,11 @@ export default function HistoryApp() {
 
   return (
     <div className="history-page">
-      <div className="history-header">
+      <div className="history-header editor-toolbar-row">
+        <div className="titlebar-controls">
+          <button type="button" id="titlebar-close" className="control-btn close-btn" title="Close Window"></button>
+          <button type="button" id="titlebar-minimize" className="control-btn min-btn" title="Minimize Window"></button>
+        </div>
         <h2>Recent Captures</h2>
       </div>
       {entries.length === 0 ? (

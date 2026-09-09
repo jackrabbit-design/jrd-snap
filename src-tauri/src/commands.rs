@@ -329,6 +329,26 @@ pub async fn trim_and_upload(
 }
 
 #[tauri::command]
+pub fn save_bytes_to_path(path: String, bytes: Vec<u8>) -> Result<(), String> {
+    std::fs::write(path, bytes).map_err(|e| e.to_string())
+}
+
+// Trims straight to the user's chosen destination — unlike trim_and_upload,
+// there's no upload step needing the bytes afterward, so this skips the
+// temp-file-then-read dance entirely.
+#[tauri::command]
+pub fn save_trimmed_video(
+    input_path: String,
+    in_point: f64,
+    out_point: f64,
+    save_path: String,
+) -> Result<(), String> {
+    let input = std::path::PathBuf::from(&input_path);
+    let output = std::path::PathBuf::from(&save_path);
+    crate::trim::trim_video(&input, &output, in_point, out_point)
+}
+
+#[tauri::command]
 pub fn start_recording_command(
     window: WebviewWindow,
     state: State<RecordingState>,

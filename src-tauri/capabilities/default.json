@@ -9,7 +9,11 @@
     "notification:default",
     "clipboard-manager:default",
     "clipboard-manager:allow-write-text",
+    "dialog:allow-save",
     "core:window:allow-hide",
-    "core:window:allow-set-ignore-cursor-events"
+    "core:window:allow-set-ignore-cursor-events",
+    "core:window:allow-start-dragging",
+    "core:window:allow-close",
+    "core:window:allow-minimize"
   ]
 }

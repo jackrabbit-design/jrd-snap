@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { sendNotification } from "@tauri-apps/plugin-notification";
+import { save } from "@tauri-apps/plugin-dialog";
 import type Konva from "konva";
 import AnnotationCanvas from "./AnnotationCanvas";
 import Toolbar from "./Toolbar";
@@ -14,6 +15,8 @@ import {
   readVideoBase64,
   recordCaptureHistory,
   startFloatingCapture,
+  saveBytesToPath,
+  saveTrimmedVideo,
 } from "../../lib/api";
 import { addShape, applyCrop, initialState, selectShape, setTool, updateShape, type EditorState, type ImageShape } from "./toolState";
 import VideoTrimmer, { type VideoTrimmerHandle } from "./VideoTrimmer";
@@ -37,6 +40,28 @@ function base64ToBlobUrl(base64: string, mimeType: string): string {
 const IS_MAC = navigator.platform.toLowerCase().includes("mac");
 const MODIFIER_KEY_LABEL = IS_MAC ? "⌘" : "Ctrl+";
 const UPLOAD_SHORTCUT_LABEL = `${MODIFIER_KEY_LABEL}E`;
+
+function UploadIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg"  className="save-icon" fill="currentColor" stroke="currentColor" stroke-width="0" viewBox="0 0 24 24"><title>Upload</title><path stroke="none" d="m12 12.586 4.243 4.242-1.415 1.415L13 16.415V22h-2v-5.587l-1.828 1.83-1.415-1.415zM12 2a7 7 0 0 1 6.954 6.194A5.5 5.5 0 0 1 18 18.978v-2.014a3.5 3.5 0 1 0-1.111-6.91 5 5 0 1 0-9.777 0 3.5 3.5 0 0 0-1.292 6.88l.18.03v2.014a5.5 5.5 0 0 1-.954-10.784A7 7 0 0 1 12 2"/></svg>
+  );
+}
+
+function SaveIcon() {
+  return (
+    <svg stroke="currentColor" fill="currentColor" className="save-icon" stroke-width="0" viewBox="0 0 16 16" height="200px" width="200px" xmlns="http://www.w3.org/2000/svg"><path d="M14.414 3.207L12.793 1.586C12.421 1.213 11.905 1 11.379 1H3C1.897 1 1 1.897 1 3V13C1 14.103 1.897 15 3 15H13C14.103 15 15 14.103 15 13V4.621C15 4.095 14.787 3.579 14.414 3.207ZM9 2V3.5C9 3.776 8.776 4 8.5 4H6.5C6.224 4 6 3.776 6 3.5V2H9ZM5 14V9.5C5 9.224 5.224 9 5.5 9H10.5C10.776 9 11 9.224 11 9.5V14H5ZM14 13C14 13.551 13.551 14 13 14H12V9.5C12 8.673 11.327 8 10.5 8H5.5C4.673 8 4 8.673 4 9.5V14H3C2.449 14 2 13.551 2 13V3C2 2.449 2.449 2 3 2H5V3.5C5 4.327 5.673 5 6.5 5H8.5C9.327 5 10 4.327 10 3.5V2H11.379C11.642 2 11.9 2.107 12.086 2.293L13.707 3.914C13.893 4.1 14 4.358 14 4.621V13Z"></path></svg>
+  );
+}
+
+const appWindow = getCurrentWindow();
+
+document.getElementById('titlebar-minimize')?.addEventListener('click', () => {
+  appWindow.minimize();
+});
+
+document.getElementById('titlebar-close')?.addEventListener('click', () => {
+  appWindow.close();
+});
 
 // Undo/redo for `state` (shapes/tool/selection) — kept as a reducer rather
 // than plain useState + a ref-tracked undo stack because that first version
@@ -113,6 +138,7 @@ export default function EditorApp() {
   const [color, setColor] = useState(() => localStorage.getItem("editor-color") ?? "#ff0000");
   const [strokeWidth, setStrokeWidth] = useState(() => Number(localStorage.getItem("editor-stroke-width")) || 3);
   const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [fading, setFading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [displayScale, setDisplayScale] = useState(1);
@@ -378,33 +404,50 @@ export default function EditorApp() {
     img.src = imageSrc;
   }
 
-  async function handleSaveAndUpload() {
-    if (!stageRef.current) return;
-    setUploading(true);
-    setError(null);
-    // Any unapplied crop selection is an uncommitted UI overlay, not a real
-    // annotation — hide it on the stage before exporting so it isn't baked
-    // into the uploaded PNG, then restore it in case the upload fails.
-    const cropNodes = stageRef.current.find(".crop-shape");
+  // Any unapplied crop selection is an uncommitted UI overlay, not a real
+  // annotation — hidden on the stage before exporting so it isn't baked
+  // into the exported PNG (uploaded or saved locally), then restored
+  // afterward (by the caller, once its own async work is done) in case
+  // that fails. Same idea for the selected/hovered blue glow
+  // (SELECTED_SHADOW in AnnotationCanvas) — it's editor UI chrome too.
+  // shadowEnabled only exists on Shape (not the base Node type returned by
+  // find), hence the type guard rather than a plain property check.
+  // find()'s selector param is typed `any`, so its generic can't be
+  // inferred from the guard — spelled out explicitly instead.
+  function hideExportChrome(): { restore: () => void } {
+    const stage = stageRef.current;
+    if (!stage) return { restore: () => {} };
+    const cropNodes = stage.find(".crop-shape");
     cropNodes.forEach((node) => {
       node.hide();
     });
-    // Same idea for the selected/hovered blue glow (SELECTED_SHADOW in
-    // AnnotationCanvas) — it's editor UI chrome, not part of the actual
-    // annotation, so it shouldn't end up baked into the uploaded PNG either.
-    // shadowEnabled only exists on Shape (not the base Node type returned by
-    // find), hence the type guard rather than a plain property check.
-    // find()'s selector param is typed `any`, so its generic can't be
-    // inferred from the guard — spelled out explicitly instead.
     type ShadowNode = Konva.Node & { shadowEnabled: (v?: boolean) => boolean };
     function hasShadow(node: Konva.Node): node is ShadowNode {
       return typeof (node as { shadowEnabled?: unknown }).shadowEnabled === "function";
     }
-    const glowingNodes = stageRef.current.find<ShadowNode>(hasShadow).filter((node) => node.shadowEnabled());
+    const glowingNodes = stage.find<ShadowNode>(hasShadow).filter((node) => node.shadowEnabled());
     glowingNodes.forEach((node) => {
       node.shadowEnabled(false);
     });
-    stageRef.current.batchDraw();
+    stage.batchDraw();
+    return {
+      restore: () => {
+        cropNodes.forEach((node) => {
+          node.show();
+        });
+        glowingNodes.forEach((node) => {
+          node.shadowEnabled(true);
+        });
+        stage.batchDraw();
+      },
+    };
+  }
+
+  async function handleSaveAndUpload() {
+    if (!stageRef.current) return;
+    setUploading(true);
+    setError(null);
+    const { restore } = hideExportChrome();
     try {
       const bytes = exportStageToBytes(stageRef.current, 1 / displayScale);
       const url = await uploadFile(bytes, "png");
@@ -419,14 +462,43 @@ export default function EditorApp() {
     } catch (e) {
       setError(String(e));
     } finally {
-      cropNodes.forEach((node) => {
-        node.show();
-      });
-      glowingNodes.forEach((node) => {
-        node.shadowEnabled(true);
-      });
-      stageRef.current.batchDraw();
+      restore();
       setUploading(false);
+    }
+  }
+
+  async function handleSaveLocally() {
+    if (!stageRef.current) return;
+    const path = await save({ defaultPath: "screenshot.png", filters: [{ name: "PNG Image", extensions: ["png"] }] });
+    if (!path) return;
+    setSaving(true);
+    setError(null);
+    const { restore } = hideExportChrome();
+    try {
+      const bytes = exportStageToBytes(stageRef.current, 1 / displayScale);
+      await saveBytesToPath(path, bytes);
+      await sendNotification({ title: "Snap", body: `Saved to ${path}` });
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      restore();
+      setSaving(false);
+    }
+  }
+
+  async function handleSaveVideoLocally() {
+    if (!videoPath) return;
+    const path = await save({ defaultPath: "recording.mp4", filters: [{ name: "MP4 Video", extensions: ["mp4"] }] });
+    if (!path) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await saveTrimmedVideo(videoPath, trim.inPoint, trim.outPoint, path);
+      await sendNotification({ title: "Snap", body: `Saved to ${path}` });
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -438,7 +510,7 @@ export default function EditorApp() {
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
       e.preventDefault();
-      if (uploading) return;
+      if (uploading || saving) return;
       if (videoSrc) {
         handleTrimAndUpload();
       } else if (imageSrc) {
@@ -452,9 +524,23 @@ export default function EditorApp() {
   if (videoSrc) {
     return (
       <div className="editor-page">
-        <div className="editor-header-row editor-actions">
-          <button type="button" className="button button-primary" onClick={handleTrimAndUpload} disabled={uploading}>
-            {uploading ? "Uploading…" : `Save & Upload (${UPLOAD_SHORTCUT_LABEL})`}
+        <div className="editor-header-row editor-actions" data-tauri-drag-region>
+          <div className="titlebar-controls">
+            <button type="button" id="titlebar-close" className="control-btn close-btn" title="Close Window"></button>
+            <button type="button" id="titlebar-minimize" className="control-btn min-btn" title="Minimize Window"></button>
+          </div>
+          <div style={{ flex: 1, pointerEvents: "none" }} />
+          <button type="button" className="button" title="Save to file" onClick={handleSaveVideoLocally} disabled={uploading || saving}>
+            {saving ? "Saving…" : <SaveIcon />}
+          </button>
+          <button
+            type="button"
+            className="button button-primary"
+            title={`Upload (${UPLOAD_SHORTCUT_LABEL})`}
+            onClick={handleTrimAndUpload}
+            disabled={uploading || saving}
+          >
+            {uploading ? "Uploading…" : <UploadIcon />}
           </button>
         </div>
         {error && (
@@ -478,7 +564,12 @@ export default function EditorApp() {
 
   return (
     <div className={`editor-page${fading ? " editor-fading" : ""}`}>
-      <div className="editor-header-row editor-toolbar-row">
+      <div className="editor-header-row editor-toolbar-row" data-tauri-drag-region>
+        <div className="titlebar-controls">
+          <button type="button" id="titlebar-close" className="control-btn close-btn" title="Close Window"></button>
+          <button type="button" id="titlebar-minimize" className="control-btn min-btn" title="Minimize Window"></button>
+        </div>
+
         <Toolbar
           tool={state.tool}
           color={color}
@@ -524,8 +615,17 @@ export default function EditorApp() {
               Apply Crop
             </button>
           )}
-          <button type="button" className="button button-primary" onClick={handleSaveAndUpload} disabled={uploading}>
-            {uploading ? "Uploading…" : `Save & Upload (${UPLOAD_SHORTCUT_LABEL})`}
+          <button type="button" className="button" title="Save to file" onClick={handleSaveLocally} disabled={uploading || saving}>
+            {saving ? "Saving…" : <SaveIcon />}
+          </button>
+          <button
+            type="button"
+            className="button button-primary"
+            title={`Upload (${UPLOAD_SHORTCUT_LABEL})`}
+            onClick={handleSaveAndUpload}
+            disabled={uploading || saving}
+          >
+            {uploading ? "Uploading…" : <UploadIcon />}
           </button>
         </div>
       </div>

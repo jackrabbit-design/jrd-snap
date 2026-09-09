@@ -68,6 +68,19 @@ export function trimAndUpload(inputPath: string, inPoint: number, outPoint: numb
   return invoke("trim_and_upload", { inputPath, inPoint, outPoint });
 }
 
+export function saveBytesToPath(path: string, bytes: Uint8Array): Promise<void> {
+  return invoke("save_bytes_to_path", { path, bytes: Array.from(bytes) });
+}
+
+export function saveTrimmedVideo(
+  inputPath: string,
+  inPoint: number,
+  outPoint: number,
+  savePath: string,
+): Promise<void> {
+  return invoke("save_trimmed_video", { inputPath, inPoint, outPoint, savePath });
+}
+
 export interface CaptureRegion {
   x: number;
   y: number;

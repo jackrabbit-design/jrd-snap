@@ -34,6 +34,7 @@ aws-sdk-s3 = "1"
 aws-config = "1"
 tokio = { version = "1", features = ["rt-multi-thread"] }
 ffmpeg-sidecar = "1"
+tauri-plugin-dialog = "2.7.3"
 
 [dev-dependencies]
 tempfile = "3"

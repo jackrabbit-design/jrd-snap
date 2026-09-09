@@ -366,6 +366,7 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             greet,
             commands::get_upload_settings,
@@ -386,6 +387,8 @@ pub fn run() {
             commands::capture_area,
             commands::upload_file,
             commands::trim_and_upload,
+            commands::save_bytes_to_path,
+            commands::save_trimmed_video,
             commands::start_recording_command,
             commands::stop_recording_command,
             commands::reopen_last_capture,

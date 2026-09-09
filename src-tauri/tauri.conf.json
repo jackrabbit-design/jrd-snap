@@ -24,7 +24,10 @@
         "url": "index.html#/settings",
         "width": 520,
         "height": 768,
-        "visible": false
+        "visible": false,
+        "hiddenTitle": true,
+        "decorations": false,
+        "transparent": true
       },
       {
         "label": "editor",
@@ -33,7 +36,10 @@
         "width": 900,
         "height": 700,
         "minWidth": 900,
-        "visible": false
+        "visible": false,
+        "hiddenTitle": true,
+        "decorations": false,
+        "transparent": true
       },
       {
         "label": "recording-controls",
@@ -45,6 +51,7 @@
         "visible": false,
         "decorations": false,
         "transparent": true,
+        "transparent": true,
         "shadow": false,
         "alwaysOnTop": true,
         "skipTaskbar": true
@@ -55,7 +62,10 @@
         "url": "index.html#/history",
         "width": 640,
         "height": 460,
-        "visible": false
+        "visible": false,
+        "hiddenTitle": true,
+        "decorations": false,
+        "transparent": true
       }
     ],
     "security": {
