@@ -150,7 +150,7 @@ export default function UploadConfigForm() {
       <label className="field">
         <div className="label-flex">
           <span>Folder/Prefix</span>
-          <span className="field-hint">(optional) e.g. "team" or "team/chris"</span>
+          <span className="field-hint">(optional) e.g. <code style={{ border: "1px solid gray", borderRadius: "2px", padding: '3px 2px 1px' }}>CK/</code></span>
         </div>
         <input
           className="input"

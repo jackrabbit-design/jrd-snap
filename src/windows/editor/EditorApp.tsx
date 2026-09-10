@@ -2,7 +2,6 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { sendNotification } from "@tauri-apps/plugin-notification";
 import { save } from "@tauri-apps/plugin-dialog";
 import type Konva from "konva";
 import AnnotationCanvas from "./AnnotationCanvas";
@@ -17,6 +16,7 @@ import {
   startFloatingCapture,
   saveBytesToPath,
   saveTrimmedVideo,
+  notify,
 } from "../../lib/api";
 import { addShape, applyCrop, initialState, selectShape, setTool, updateShape, type EditorState, type ImageShape } from "./toolState";
 import VideoTrimmer, { type VideoTrimmerHandle } from "./VideoTrimmer";
@@ -324,7 +324,7 @@ export default function EditorApp() {
         console.error("failed to record capture history", e);
       }
       await writeText(url);
-      await sendNotification({ title: "Snap", body: `Uploaded — link copied to clipboard\n${url}` });
+      await notify(`Uploaded — link copied to clipboard\n${url}`);
       await getCurrentWindow().hide();
     } catch (e) {
       setError(String(e));
@@ -449,7 +449,7 @@ export default function EditorApp() {
         console.error("failed to record capture history", e);
       }
       await writeText(url);
-      await sendNotification({ title: "Snap", body: `Uploaded — link copied to clipboard\n${url}` });
+      await notify(`Uploaded — link copied to clipboard\n${url}`);
       await getCurrentWindow().hide();
     } catch (e) {
       setError(String(e));
@@ -469,7 +469,7 @@ export default function EditorApp() {
     try {
       const bytes = exportStageToBytes(stageRef.current, 1 / displayScale);
       await saveBytesToPath(path, bytes);
-      await sendNotification({ title: "Snap", body: `Saved to ${path}` });
+      await notify(`Saved to ${path}`);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -486,7 +486,7 @@ export default function EditorApp() {
     setError(null);
     try {
       await saveTrimmedVideo(videoPath, trim.inPoint, trim.outPoint, path);
-      await sendNotification({ title: "Snap", body: `Saved to ${path}` });
+      await notify(`Saved to ${path}`);
     } catch (e) {
       setError(String(e));
     } finally {

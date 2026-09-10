@@ -52,6 +52,14 @@ export function uploadFile(bytes: Uint8Array, extension: string): Promise<string
   return invoke("upload_file", { bytes: Array.from(bytes), extension });
 }
 
+export function uploadFileFromPath(path: string): Promise<string> {
+  return invoke("upload_file_from_path", { path });
+}
+
+export function hideDropWindow(): Promise<void> {
+  return invoke("hide_drop_window");
+}
+
 export function showOverlayForRecording(): Promise<void> {
   return invoke("show_overlay_for_recording");
 }
@@ -70,6 +78,14 @@ export function trimAndUpload(inputPath: string, inPoint: number, outPoint: numb
 
 export function saveBytesToPath(path: string, bytes: Uint8Array): Promise<void> {
   return invoke("save_bytes_to_path", { path, bytes: Array.from(bytes) });
+}
+
+// Goes through the Rust-side notify-rust call directly rather than
+// @tauri-apps/plugin-notification, whose desktop `show()` fires the actual
+// OS notification on a detached async task and discards its result — making
+// delivery failures both silent and unfixable from the caller's side.
+export function notify(body: string): Promise<void> {
+  return invoke("notify", { body });
 }
 
 export function saveTrimmedVideo(

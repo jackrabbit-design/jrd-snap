@@ -21,7 +21,6 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["tray-icon", "macos-private-api", "image-png"] }
 tauri-plugin-opener = "2"
 tauri-plugin-global-shortcut = "2"
-tauri-plugin-notification = "2"
 tauri-plugin-clipboard-manager = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -35,6 +34,7 @@ aws-config = "1"
 tokio = { version = "1", features = ["rt-multi-thread"] }
 ffmpeg-sidecar = "1"
 tauri-plugin-dialog = "2.7.3"
+notify-rust = "4"
 
 [dev-dependencies]
 tempfile = "3"

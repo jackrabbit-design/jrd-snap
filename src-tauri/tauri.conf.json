@@ -65,6 +65,20 @@
         "hiddenTitle": true,
         "decorations": false,
         "transparent": true
+      },
+      {
+        "label": "drop-upload",
+        "title": "Snap Quick Upload",
+        "url": "index.html#/drop-upload",
+        "width": 160,
+        "height": 160,
+        "resizable": false,
+        "visible": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true
       }
     ],
     "security": {

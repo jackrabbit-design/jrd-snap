@@ -2,6 +2,7 @@
 mod capture;
 mod commands;
 mod filename;
+mod notify;
 mod object_key;
 mod recording;
 mod settings;
@@ -12,7 +13,6 @@ mod upload;
 
 use tauri::{Emitter, Listener, Manager, PhysicalPosition, PhysicalSize, Position, Size};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
-use tauri_plugin_notification::NotificationExt;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -113,15 +113,7 @@ pub(crate) fn register_shortcuts(app: &tauri::AppHandle) -> Result<(), String> {
 
 pub(crate) fn notify_capture_failed(app: &tauri::AppHandle, e: &str) {
     eprintln!("capture failed: {e}");
-    if let Err(e) = app
-        .notification()
-        .builder()
-        .title("Snap")
-        .body(format!("Capture failed: {e}"))
-        .show()
-    {
-        eprintln!("failed to show capture-failed notification: {e}");
-    }
+    notify::notify(app, format!("Capture failed: {e}"));
 }
 
 pub(crate) fn discard_any_active_recording(app: &tauri::AppHandle) {
@@ -393,7 +385,6 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
@@ -418,6 +409,9 @@ pub fn run() {
             commands::trim_and_upload,
             commands::save_bytes_to_path,
             commands::save_trimmed_video,
+            commands::notify,
+            commands::upload_file_from_path,
+            commands::hide_drop_window,
             commands::start_recording_command,
             commands::stop_recording_command,
             commands::reopen_last_capture,
@@ -437,6 +431,10 @@ pub fn run() {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             tray::build_tray(app.handle())?;
+            {
+                let items = app.state::<tray::TrayMenuItems>();
+                updater::start_daily_check(app.handle().clone(), items.check_for_updates.clone());
+            }
 
             // Create (but don't show) the per-monitor overlay windows now,
             // rather than lazily on first use. Each is a fresh webview that

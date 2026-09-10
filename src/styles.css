@@ -624,6 +624,47 @@ input[type="color"]::-webkit-color-swatch-wrapper {
   background: transparent;
 }
 
+/* Drop-upload window (small, always-on-top quick-upload drop target) */
+
+.drop-upload-root {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2);
+  background: transparent;
+}
+
+.drop-upload-close {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 1;
+}
+
+.drop-upload-zone {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  gap: 10px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-2);
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+
+.drop-upload-over .drop-upload-zone {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
 /* Video trim mode (editor window) */
 
 .video-trimmer {

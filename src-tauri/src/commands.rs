@@ -291,25 +291,63 @@ pub fn capture_area(app: AppHandle, rect: CaptureRect) -> Result<Vec<u8>, String
     capture::capture_area_png(rect, index)
 }
 
-async fn upload_bytes(app: &AppHandle, bytes: Vec<u8>, extension: &str) -> Result<String, String> {
+fn content_type_for_extension(extension: &str) -> &'static str {
+    match extension.to_ascii_lowercase().as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "heic" => "image/heic",
+        "bmp" => "image/bmp",
+        "tiff" | "tif" => "image/tiff",
+        "svg" => "image/svg+xml",
+        "mp4" => "video/mp4",
+        "mov" => "video/quicktime",
+        "webm" => "video/webm",
+        "zip" => "application/zip",
+        "doc" => "application/msword",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xls" => "application/vnd.ms-excel",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "ppt" => "application/vnd.ms-powerpoint",
+        "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "pages" => "application/x-iwork-pages-sffpages",
+        "numbers" => "application/x-iwork-numbers-sffnumbers",
+        "key" => "application/x-iwork-keynote-sffkey",
+        "pdf" => "application/pdf",
+        "txt" => "text/plain",
+        "rtf" => "application/rtf",
+        "csv" => "text/csv",
+        _ => "application/octet-stream",
+    }
+}
+
+async fn upload_named_bytes(
+    app: &AppHandle,
+    bytes: Vec<u8>,
+    name: &str,
+    extension: &str,
+) -> Result<String, String> {
     let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     let settings = settings::load_settings(&config_dir);
     let creds = KeyringCredentialStore
         .get()
         .ok_or("no upload credentials configured — open Settings and add them")?;
 
-    let name = filename::generate_filename(settings.filename_prefix.as_deref(), extension);
-    let key = build_object_key(settings.key_prefix.as_deref(), &name);
-    let content_type = match extension {
-        "png" => "image/png",
-        "mp4" => "video/mp4",
-        _ => "application/octet-stream",
-    };
+    let key = build_object_key(settings.key_prefix.as_deref(), name);
+    let content_type = content_type_for_extension(extension);
 
     upload_object(&settings, &creds, &key, bytes, content_type).await?;
 
     crate::flash_success_tray_icon(app);
     Ok(build_public_url(&settings, &key))
+}
+
+async fn upload_bytes(app: &AppHandle, bytes: Vec<u8>, extension: &str) -> Result<String, String> {
+    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let settings = settings::load_settings(&config_dir);
+    let name = filename::generate_filename(settings.filename_prefix.as_deref(), extension);
+    upload_named_bytes(app, bytes, &name, extension).await
 }
 
 #[tauri::command]
@@ -319,6 +357,31 @@ pub async fn upload_file(
     extension: String,
 ) -> Result<String, String> {
     upload_bytes(&app, bytes, &extension).await
+}
+
+const MAX_DROP_UPLOAD_BYTES: u64 = 100 * 1024 * 1024;
+
+#[tauri::command]
+pub async fn upload_file_from_path(app: AppHandle, path: String) -> Result<String, String> {
+    let path = std::path::PathBuf::from(path);
+    let metadata = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+    if metadata.len() > MAX_DROP_UPLOAD_BYTES {
+        return Err("File too large (max 100MB)".to_string());
+    }
+
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or("dropped file has no valid filename")?
+        .to_string();
+    let extension = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+
+    upload_named_bytes(&app, bytes, &name, &extension).await
 }
 
 #[tauri::command]
@@ -343,6 +406,16 @@ pub async fn trim_and_upload(
 #[tauri::command]
 pub fn save_bytes_to_path(path: String, bytes: Vec<u8>) -> Result<(), String> {
     std::fs::write(path, bytes).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn notify(app: AppHandle, body: String) {
+    crate::notify::notify(&app, body);
+}
+
+#[tauri::command]
+pub fn hide_drop_window(app: AppHandle) {
+    crate::tray::set_drop_window_visible(&app, false);
 }
 
 // Trims straight to the user's chosen destination — unlike trim_and_upload,

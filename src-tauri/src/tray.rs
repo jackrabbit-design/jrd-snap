@@ -2,7 +2,7 @@ use crate::settings::{self, HotkeySettings};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    AppHandle, Emitter, Manager,
+    AppHandle, Emitter, Manager, PhysicalPosition, WebviewWindow,
 };
 
 pub struct TrayMenuItems {
@@ -11,6 +11,49 @@ pub struct TrayMenuItems {
     pub record_area: MenuItem<tauri::Wry>,
     pub stop_recording: MenuItem<tauri::Wry>,
     pub reopen_last_capture: MenuItem<tauri::Wry>,
+    pub check_for_updates: MenuItem<tauri::Wry>,
+    pub toggle_drop_window: MenuItem<tauri::Wry>,
+}
+
+// Top-right corner of the primary monitor, with margin — the top margin in
+// particular keeps the window clear of the very top screen edge, which
+// macOS reserves for Spaces-switching during any drag (confirmed via a
+// throwaway spike: dragging a file that close to the menu bar never even
+// reaches an app's drag handler).
+const DROP_WINDOW_MARGIN_RIGHT: i32 = 20;
+const DROP_WINDOW_MARGIN_TOP: i32 = 48;
+
+// Shared by the tray menu's toggle item and the drop window's own close
+// button (via the `hide_drop_window` command), so the menu label can never
+// drift out of sync with the window's actual visibility regardless of which
+// path changed it.
+pub(crate) fn set_drop_window_visible(app: &AppHandle, visible: bool) {
+    let Some(win) = app.get_webview_window("drop-upload") else {
+        return;
+    };
+    if visible {
+        position_drop_window(app, &win);
+        let _ = win.show();
+        let _ = win.set_focus();
+    } else {
+        let _ = win.hide();
+    }
+    let items = app.state::<TrayMenuItems>();
+    let label = if visible { "Hide Drop Window" } else { "Show Drop Window" };
+    let _ = items.toggle_drop_window.set_text(label);
+}
+
+fn position_drop_window(app: &AppHandle, win: &WebviewWindow) {
+    let (Ok(Some(monitor)), Ok(win_size)) = (app.primary_monitor(), win.outer_size()) else {
+        return;
+    };
+    let monitor_pos = monitor.position();
+    let monitor_size = monitor.size();
+    let x = monitor_pos.x + monitor_size.width as i32
+        - win_size.width as i32
+        - DROP_WINDOW_MARGIN_RIGHT;
+    let y = monitor_pos.y + DROP_WINDOW_MARGIN_TOP;
+    let _ = win.set_position(PhysicalPosition::new(x, y));
 }
 
 // Loaded once here at startup and again whenever hotkeys are saved
@@ -63,6 +106,13 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         None::<&str>,
     )?;
     let settings = MenuItem::with_id(app, "open_settings", "Settings", true, None::<&str>)?;
+    let toggle_drop_window = MenuItem::with_id(
+        app,
+        "toggle_drop_window",
+        "Show Drop Window",
+        true,
+        None::<&str>,
+    )?;
     let check_for_updates =
         MenuItem::with_id(app, "check_for_updates", "Check for Updates…", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -77,6 +127,7 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             &reopen_last_capture,
             &recent_captures,
             &settings,
+            &toggle_drop_window,
             &check_for_updates,
             &quit,
         ],
@@ -88,6 +139,8 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         record_area: record_area.clone(),
         stop_recording: stop_recording.clone(),
         reopen_last_capture: reopen_last_capture.clone(),
+        check_for_updates: check_for_updates.clone(),
+        toggle_drop_window: toggle_drop_window.clone(),
     });
 
     let tray_icon = TrayIconBuilder::new()
@@ -157,8 +210,15 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
                     let _ = win.set_focus();
                 }
             }
+            "toggle_drop_window" => {
+                if let Some(win) = app.get_webview_window("drop-upload") {
+                    let currently_visible = win.is_visible().unwrap_or(false);
+                    set_drop_window_visible(app, !currently_visible);
+                }
+            }
             "check_for_updates" => {
-                crate::updater::check_for_updates(app.clone());
+                let items = app.state::<TrayMenuItems>();
+                crate::updater::check_for_updates(app.clone(), items.check_for_updates.clone());
             }
             "quit" => {
                 let state = app.state::<crate::recording::RecordingState>();

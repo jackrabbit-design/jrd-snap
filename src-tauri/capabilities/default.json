@@ -2,11 +2,10 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main", "editor", "overlay-*", "settings", "recording-controls", "history"],
+  "windows": ["main", "editor", "overlay-*", "settings", "recording-controls", "history", "drop-upload"],
   "permissions": [
     "core:default",
     "opener:default",
-    "notification:default",
     "clipboard-manager:default",
     "clipboard-manager:allow-write-text",
     "dialog:allow-save",
