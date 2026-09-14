@@ -43,8 +43,14 @@ const UPLOAD_SHORTCUT_LABEL = `${MODIFIER_KEY_LABEL}E`;
 
 function UploadIcon() {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg"  className="save-icon" fill="currentColor" stroke="currentColor" stroke-width="0" viewBox="0 0 24 24"><title>Upload</title><path stroke="none" d="m12 12.586 4.243 4.242-1.415 1.415L13 16.415V22h-2v-5.587l-1.828 1.83-1.415-1.415zM12 2a7 7 0 0 1 6.954 6.194A5.5 5.5 0 0 1 18 18.978v-2.014a3.5 3.5 0 1 0-1.111-6.91 5 5 0 1 0-9.777 0 3.5 3.5 0 0 0-1.292 6.88l.18.03v2.014a5.5 5.5 0 0 1-.954-10.784A7 7 0 0 1 12 2"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" className="save-icon" fill="currentColor" stroke="currentColor" stroke-width="0" viewBox="0 0 24 24"><title>Upload</title><path stroke="none" d="m12 12.586 4.243 4.242-1.415 1.415L13 16.415V22h-2v-5.587l-1.828 1.83-1.415-1.415zM12 2a7 7 0 0 1 6.954 6.194A5.5 5.5 0 0 1 18 18.978v-2.014a3.5 3.5 0 1 0-1.111-6.91 5 5 0 1 0-9.777 0 3.5 3.5 0 0 0-1.292 6.88l.18.03v2.014a5.5 5.5 0 0 1-.954-10.784A7 7 0 0 1 12 2"/></svg>
   );
+}
+
+function ProgressIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" className='save-icon' viewBox="0 0 24 24"><title>Progress</title><path d="M12 4a8 8 0 0 1 7.89 6.7 1.53 1.53 0 0 0 1.49 1.3 1.5 1.5 0 0 0 1.48-1.75 11 11 0 0 0-21.72 0A1.5 1.5 0 0 0 2.62 12a1.53 1.53 0 0 0 1.49-1.3A8 8 0 0 1 12 4Z"><animateTransform attributeName="transform" dur="0.75s" repeatCount="indefinite" type="rotate" values="0 12 12;360 12 12"/></path></svg>
+  )
 }
 
 function SaveIcon() {
@@ -345,7 +351,13 @@ export default function EditorApp() {
     const selected = state.shapes.find((s) => s.id === state.selectedId);
     if (selected) {
       if (selected.type === "text") {
-        setState(updateShape(state, selected.id, { fontSize: 17 + next * 3 }));
+        // strokeWidth isn't used for the text itself, only its callout
+        // arrow (if any) — kept in sync with the slider the same way every
+        // other tool's arrow already is, rather than staying frozen at
+        // whatever value was current when the text was first placed. Halved
+        // relative to the raw slider value — at the slider's max (30), a
+        // full-width arrow read as too thick next to the text.
+        setState(updateShape(state, selected.id, { fontSize: 17 + next * 3, strokeWidth: next * 0.5 }));
       } else {
         setState(updateShape(state, selected.id, { strokeWidth: selected.type === "highlighter" ? next * 4 : next }));
       }
@@ -354,6 +366,14 @@ export default function EditorApp() {
 
   function handleTextBackgroundChange(next: boolean) {
     if (state.selectedId) setState(updateShape(state, state.selectedId, { background: next }));
+  }
+
+  function handleTextArrowChange(next: boolean) {
+    if (!state.selectedId) return;
+    const shape = state.shapes.find((s) => s.id === state.selectedId);
+    if (!shape || shape.type !== "text") return;
+    const arrowEnd = shape.arrowEnd ?? { x: shape.x + 80, y: shape.y + 50 };
+    setState(updateShape(state, state.selectedId, { arrow: next, arrowEnd }));
   }
 
   // Fades this window's content out, then hides the window itself (via
@@ -523,7 +543,7 @@ export default function EditorApp() {
           </div>
           <div style={{ flex: 1, pointerEvents: "none" }} />
           <button type="button" className="button" title="Save to file" onClick={handleSaveVideoLocally} disabled={uploading || saving}>
-            {saving ? "Saving…" : <SaveIcon />}
+            {saving ? <ProgressIcon /> : <SaveIcon />}
           </button>
           <button
             type="button"
@@ -532,7 +552,7 @@ export default function EditorApp() {
             onClick={handleTrimAndUpload}
             disabled={uploading || saving}
           >
-            {uploading ? "Uploading…" : <UploadIcon />}
+            {uploading ? <ProgressIcon /> : <UploadIcon />}
           </button>
         </div>
         {error && (
@@ -568,12 +588,14 @@ export default function EditorApp() {
           strokeWidth={strokeWidth}
           showTextBackground={selectedShape?.type === "text"}
           textBackground={selectedShape?.type === "text" ? selectedShape.background : false}
+          textArrow={selectedShape?.type === "text" ? (selectedShape.arrow ?? false) : false}
           disableStyleControls={selectedShape?.type === "image"}
           onToolChange={(t) => setState(setTool(state, t))}
           onAddScreenshot={handleAddScreenshot}
           onColorChange={handleColorChange}
           onStrokeWidthChange={handleStrokeWidthChange}
           onTextBackgroundChange={handleTextBackgroundChange}
+          onTextArrowChange={handleTextArrowChange}
         />
         <div className="editor-actions">
           <button
@@ -608,7 +630,7 @@ export default function EditorApp() {
             </button>
           )}
           <button type="button" className="button" title="Save to file" onClick={handleSaveLocally} disabled={uploading || saving}>
-            {saving ? "Saving…" : <SaveIcon />}
+            {saving ? <ProgressIcon /> : <SaveIcon />}
           </button>
           <button
             type="button"
@@ -617,7 +639,7 @@ export default function EditorApp() {
             onClick={handleSaveAndUpload}
             disabled={uploading || saving}
           >
-            {uploading ? "Uploading…" : <UploadIcon />}
+            {uploading ? <ProgressIcon /> : <UploadIcon />}
           </button>
         </div>
       </div>

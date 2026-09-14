@@ -67,6 +67,91 @@ function drawRoughDrawable(context: Konva.Context, shapeNode: Konva.Shape, ...dr
   context.strokeShape(shapeNode);
 }
 
+// A shared offscreen canvas context, reused across calls rather than
+// creating one per measurement — text measurement happens on every render
+// of every text-with-arrow shape.
+let measureContext: CanvasRenderingContext2D | null | undefined;
+
+// Approximates the box a text shape actually renders into (matching Konva
+// Text's own auto-sizing: content size plus padding on all sides) well
+// enough to anchor a callout arrow's tail to its perimeter. Doesn't attempt
+// to simulate word-wrapping for the rare legacy shape with a stored `width`
+// — its height estimate only accounts for literal newlines in that case.
+function measureTextBox(shape: TextShape): { x: number; y: number; width: number; height: number } {
+  if (measureContext === undefined) {
+    measureContext = document.createElement("canvas").getContext("2d");
+  }
+  const padding = textPadding(shape.fontSize);
+  const lines = shape.text.split("\n");
+  let contentWidth = 0;
+  const ctx = measureContext;
+  if (ctx) {
+    ctx.font = `600 ${shape.fontSize}px Instrument Sans, sans-serif`;
+    contentWidth = Math.max(...lines.map((line) => ctx.measureText(line).width), 1);
+  }
+  const width = shape.width ?? contentWidth + padding * 2;
+  const height = lines.length * shape.fontSize * TEXT_LINE_HEIGHT + padding * 2;
+  return { x: shape.x, y: shape.y, width, height };
+}
+
+// The closest point on a rectangle's own outline to some other point —
+// clamping the point into the rect lands exactly on the nearest edge
+// whenever it started outside (the common case for an arrow tip). Snapped
+// to 8 compass points (corners + edge midpoints) rather than sliding freely
+// along the perimeter — floating anywhere looked unanchored/jittery as the
+// tip moved; fixed points read as a deliberate connection.
+function closestCompassPoint(
+  box: { x: number; y: number; width: number; height: number },
+  target: { x: number; y: number },
+): { x: number; y: number } {
+  const left = box.x;
+  const right = box.x + box.width;
+  const top = box.y;
+  const bottom = box.y + box.height;
+  const midX = (left + right) / 2;
+  const midY = (top + bottom) / 2;
+  const points = [
+    { x: left, y: top },
+    { x: midX, y: top },
+    { x: right, y: top },
+    { x: right, y: midY },
+    { x: right, y: bottom },
+    { x: midX, y: bottom },
+    { x: left, y: bottom },
+    { x: left, y: midY },
+  ];
+  return points.reduce((closest, p) => {
+    const d = (p.x - target.x) ** 2 + (p.y - target.y) ** 2;
+    const dClosest = (closest.x - target.x) ** 2 + (closest.y - target.y) ** 2;
+    return d < dClosest ? p : closest;
+  });
+}
+
+// Shared by the standalone arrow tool and the text tool's callout arrow —
+// both are a rough.js hand-drawn shaft plus a two-stroke arrowhead at the
+// same (x2, y2) tip.
+function drawRoughArrow(
+  context: Konva.Context,
+  shapeNode: Konva.Shape,
+  points: number[],
+  seed: number,
+  strokeWidth: number,
+) {
+  const [x1, y1, x2, y2] = points;
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const headLength = Math.max(21, strokeWidth * 3.75);
+  const headAngle = Math.PI / 7;
+  const leftX = x2 - headLength * Math.cos(angle - headAngle);
+  const leftY = y2 - headLength * Math.sin(angle - headAngle);
+  const rightX = x2 - headLength * Math.cos(angle + headAngle);
+  const rightY = y2 - headLength * Math.sin(angle + headAngle);
+  const opts = { seed, roughness: ROUGH_ROUGHNESS, bowing: ROUGH_BOWING };
+  const shaft = roughGenerator.line(x1, y1, x2, y2, opts);
+  const headLeft = roughGenerator.line(x2, y2, leftX, leftY, { ...opts, seed: seed + 1 });
+  const headRight = roughGenerator.line(x2, y2, rightX, rightY, { ...opts, seed: seed + 2 });
+  drawRoughDrawable(context, shapeNode, shaft, headLeft, headRight);
+}
+
 // An SVG path string for a rounded rectangle, fed to rough.js's path()
 // generator (rather than its plain rectangle(), which has no corner-radius
 // option) so the rect tool keeps its rounded corners *and* picks up the
@@ -89,6 +174,38 @@ function roundedRectPath(width: number, height: number, radius: number): string 
     `M${left + r},${top} H${right - r} Q${right},${top} ${right},${top + r} ` +
     `V${bottom - r} Q${right},${bottom} ${right - r},${bottom} H${left + r} ` +
     `Q${left},${bottom} ${left},${bottom - r} V${top + r} Q${left},${top} ${left + r},${top} Z`
+  );
+}
+
+// A single draggable endpoint, for shapes with a fixed tail (the text
+// callout arrow) — unlike EndpointHandles, only the tip is ever adjustable,
+// since the tail is always derived from the text shape's own position.
+function TipHandle({
+  x,
+  y,
+  onPositionChange,
+  onBeginContinuousEdit,
+  onEndContinuousEdit,
+}: {
+  x: number;
+  y: number;
+  onPositionChange: (x: number, y: number) => void;
+  onBeginContinuousEdit?: () => void;
+  onEndContinuousEdit?: () => void;
+}) {
+  return (
+    <Circle
+      x={x}
+      y={y}
+      radius={6}
+      fill="#3b82f6"
+      stroke="#fff"
+      strokeWidth={1}
+      draggable
+      onDragStart={() => onBeginContinuousEdit?.()}
+      onDragMove={(e) => onPositionChange(e.target.x(), e.target.y())}
+      onDragEnd={() => onEndContinuousEdit?.()}
+    />
   );
 }
 
@@ -163,6 +280,13 @@ const TOOL_HOTKEYS: Record<string, ToolType> = {
   l: "line",
   h: "highlighter",
 };
+
+// Applied to text uniformly whether or not it has a background, so toggling
+// the background doesn't shift the glyphs — only the box behind them.
+const TEXT_LINE_HEIGHT = 1.2;
+function textPadding(fontSize: number): number {
+  return fontSize * 0.35;
+}
 
 const SELECTED_SHADOW = {
   shadowColor: "#3b82f6",
@@ -323,7 +447,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
   const drawing = useRef<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [editingText, setEditingText] = useState<{ id: string; x: number; y: number; value: string; fontSize: number; width?: number } | null>(
+  const [editingText, setEditingText] = useState<{ id: string; x: number; y: number; value: string; fontSize: number } | null>(
     null,
   );
 
@@ -485,29 +609,36 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
 
   function startEditingText(shape: TextShape) {
     const containerRect = containerRef.current?.getBoundingClientRect();
+    const padding = textPadding(shape.fontSize) * fit.scale;
     setEditingText({
       id: shape.id,
-      x: (containerRect?.left ?? 0) + shape.x * fit.scale,
-      y: (containerRect?.top ?? 0) + shape.y * fit.scale,
+      x: (containerRect?.left ?? 0) + shape.x * fit.scale + padding,
+      y: (containerRect?.top ?? 0) + shape.y * fit.scale + padding,
       value: shape.text,
       fontSize: shape.fontSize,
-      width: shape.width,
     });
   }
 
+  // Grows the textarea to fit its content in both directions — there's no
+  // fixed box to wrap within any more, so a line just keeps growing wider
+  // as you type and only breaks on a real newline. Resetting to a small
+  // size before reading scroll{Width,Height} is required in both axes:
+  // browsers report the *larger* of the current size and the content size,
+  // so without the reset the box would grow but never shrink back down as
+  // text is deleted.
   function autosizeTextarea() {
     const el = textareaRef.current;
     if (!el) return;
+    el.style.width = "0px";
     el.style.height = "auto";
+    el.style.width = `${el.scrollWidth + 2}px`;
     el.style.height = `${el.scrollHeight}px`;
   }
 
   // Shared by the textarea's onBlur and by handleMouseDown's "clicked
-  // elsewhere while still editing" case, so both paths capture the wrap
-  // width the same way — a previous version duplicated a simplified copy of
-  // this in handleMouseDown that saved `text` but forgot `width`, so
-  // committing via a canvas click (rather than a real DOM blur) silently
-  // dropped the wrap point.
+  // elsewhere while still editing" case, so both paths commit the same way
+  // — a previous version duplicated a simplified copy of this in
+  // handleMouseDown, which was easy to let drift out of sync.
   //
   // Unlike the other tools, text reverts to "select" once you're done with
   // it (rather than staying on "text") — placing text is a modal edit
@@ -516,12 +647,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
   // interpreted as the start of a brand new text box.
   function commitTextInto(base: EditorState): EditorState {
     if (!editingText) return base;
-    // Capture the textarea's on-screen width (converted back to native
-    // image-pixel space, same as x/y) so the committed Konva Text node can
-    // word-wrap at the same point the textarea was softly wrapping at,
-    // instead of rendering everything as one unbounded line.
-    const width = textareaRef.current ? textareaRef.current.clientWidth / fit.scale : undefined;
-    return setTool(updateShape(base, editingText.id, { text: editingText.value, width }), "select");
+    return setTool(updateShape(base, editingText.id, { text: editingText.value }), "select");
   }
 
   function commitEditingText() {
@@ -713,20 +839,7 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
                     onTap={() => select(shape.id)}
                     onDragEnd={(e) => handleArrowDragEnd(shape, e.target)}
                     sceneFunc={(context, shapeNode) => {
-                      const [x1, y1, x2, y2] = shape.points;
-                      const seed = seedFromId(shape.id);
-                      const angle = Math.atan2(y2 - y1, x2 - x1);
-                      const headLength = Math.max(21, shape.strokeWidth * 3.75);
-                      const headAngle = Math.PI / 7;
-                      const leftX = x2 - headLength * Math.cos(angle - headAngle);
-                      const leftY = y2 - headLength * Math.sin(angle - headAngle);
-                      const rightX = x2 - headLength * Math.cos(angle + headAngle);
-                      const rightY = y2 - headLength * Math.sin(angle + headAngle);
-                      const opts = { seed, roughness: ROUGH_ROUGHNESS, bowing: ROUGH_BOWING };
-                      const shaft = roughGenerator.line(x1, y1, x2, y2, opts);
-                      const headLeft = roughGenerator.line(x2, y2, leftX, leftY, { ...opts, seed: seed + 1 });
-                      const headRight = roughGenerator.line(x2, y2, rightX, rightY, { ...opts, seed: seed + 2 });
-                      drawRoughDrawable(context, shapeNode, shaft, headLeft, headRight);
+                      drawRoughArrow(context, shapeNode, shape.points, seedFromId(shape.id), shape.strokeWidth);
                     }}
                     {...((selected || hovered) ? SELECTED_SHADOW : {})}
                   />
@@ -917,43 +1030,94 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
                 fontSize: shape.fontSize,
                 fontFamily: "Instrument Sans, sans-serif",
                 fontStyle: '600',
+                lineHeight: TEXT_LINE_HEIGHT,
                 width: shape.width,
+                padding: textPadding(shape.fontSize),
               };
+              const arrowEnd = shape.arrow ? shape.arrowEnd : undefined;
+              // The arrow's tail is always derived from the text's own
+              // position (never stored) — snapped to whichever of the 8
+              // compass points around its bounding box is nearest the tip —
+              // so dragging the text drags the whole arrow along with it.
+              const arrowTail = arrowEnd && closestCompassPoint(measureTextBox(shape), arrowEnd);
+              const arrow = arrowEnd && arrowTail && (
+                <Fragment key={`${shape.id}-arrow`}>
+                  <Arrow
+                    points={[arrowTail.x, arrowTail.y, arrowEnd.x, arrowEnd.y]}
+                    stroke={shape.color}
+                    strokeWidth={shape.strokeWidth}
+                    fill={shape.color}
+                    lineCap="round"
+                    lineJoin="round"
+                    listening={false}
+                    sceneFunc={(context, shapeNode) => {
+                      drawRoughArrow(
+                        context,
+                        shapeNode,
+                        [arrowTail.x, arrowTail.y, arrowEnd.x, arrowEnd.y],
+                        seedFromId(shape.id),
+                        shape.strokeWidth,
+                      );
+                    }}
+                  />
+                  <TipHandle
+                    x={arrowEnd.x}
+                    y={arrowEnd.y}
+                    onPositionChange={(x, y) => onStateChange(updateShape(state, shape.id, { arrowEnd: { x, y } }))}
+                    onBeginContinuousEdit={onBeginContinuousEdit}
+                    onEndContinuousEdit={onEndContinuousEdit}
+                  />
+                </Fragment>
+              );
               if (shape.background) {
                 return (
-                  <Label
-                    key={shape.id}
-                    id={shape.id}
-                    x={shape.x}
-                    y={shape.y}
-                    draggable={draggable}
-                    onClick={() => select(shape.id)}
-                    onTap={() => select(shape.id)}
-                    onDragEnd={(e) => onStateChange(updateShape(state, shape.id, { x: e.target.x(), y: e.target.y() }))}
-                    onDblClick={() => startEditingText(shape)}
-                    onDblTap={() => startEditingText(shape)}
-                  >
-                    <Tag id={shape.id} cornerRadius={shape.fontSize * 0.3} fill={shape.color} {...((selected || hovered) ? SELECTED_SHADOW : {})} />
-                    <Text id={shape.id} {...textProps} padding={shape.fontSize * 0.35} fill={isDarkColor(shape.color) ? "white" : "black"} />
-                  </Label>
+                  <Fragment key={shape.id}>
+                    <Label
+                      id={shape.id}
+                      x={shape.x}
+                      y={shape.y}
+                      draggable={draggable}
+                      onClick={() => select(shape.id)}
+                      onTap={() => select(shape.id)}
+                      onDragStart={() => onBeginContinuousEdit?.()}
+                      onDragMove={(e) => onStateChange(updateShape(state, shape.id, { x: e.target.x(), y: e.target.y() }))}
+                      onDragEnd={(e) => {
+                        onStateChange(updateShape(state, shape.id, { x: e.target.x(), y: e.target.y() }));
+                        onEndContinuousEdit?.();
+                      }}
+                      onDblClick={() => startEditingText(shape)}
+                      onDblTap={() => startEditingText(shape)}
+                    >
+                      <Tag id={shape.id} cornerRadius={shape.fontSize * 0.3} fill={shape.color} {...((selected || hovered) ? SELECTED_SHADOW : {})} />
+                      <Text id={shape.id} {...textProps} fill={isDarkColor(shape.color) ? "white" : "black"} />
+                    </Label>
+                    {arrow}
+                  </Fragment>
                 );
               }
               return (
-                <Text
-                  key={shape.id}
-                  id={shape.id}
-                  x={shape.x}
-                  y={shape.y}
-                  {...textProps}
-                  fill={shape.color}
-                  draggable={draggable}
-                  onClick={() => select(shape.id)}
-                  onTap={() => select(shape.id)}
-                  onDragEnd={(e) => onStateChange(updateShape(state, shape.id, { x: e.target.x(), y: e.target.y() }))}
-                  onDblClick={() => startEditingText(shape)}
-                  onDblTap={() => startEditingText(shape)}
-                  {...((selected || hovered) ? SELECTED_SHADOW : {})}
-                />
+                <Fragment key={shape.id}>
+                  <Text
+                    id={shape.id}
+                    x={shape.x}
+                    y={shape.y}
+                    {...textProps}
+                    fill={shape.color}
+                    draggable={draggable}
+                    onClick={() => select(shape.id)}
+                    onTap={() => select(shape.id)}
+                    onDragStart={() => onBeginContinuousEdit?.()}
+                    onDragMove={(e) => onStateChange(updateShape(state, shape.id, { x: e.target.x(), y: e.target.y() }))}
+                    onDragEnd={(e) => {
+                      onStateChange(updateShape(state, shape.id, { x: e.target.x(), y: e.target.y() }));
+                      onEndContinuousEdit?.();
+                    }}
+                    onDblClick={() => startEditingText(shape)}
+                    onDblTap={() => startEditingText(shape)}
+                    {...((selected || hovered) ? SELECTED_SHADOW : {})}
+                  />
+                  {arrow}
+                </Fragment>
               );
             }
             return null;
@@ -1006,16 +1170,18 @@ const AnnotationCanvas = forwardRef<Konva.Stage, Props>(function AnnotationCanva
                 position: "fixed",
                 left: editingText.x,
                 top: editingText.y,
-                minWidth: 120,
-                width: editingText.width !== undefined ? editingText.width * fit.scale : undefined,
                 fontSize: editingText.fontSize * fit.scale,
                 fontFamily: "var(--font)",
-                lineHeight: 1.2,
-                border: "1px solid #3b82f6",
-                padding: 2,
+                lineHeight: TEXT_LINE_HEIGHT,
+                whiteSpace: "pre",
+                border: "none",
+                outline: "none",
+                padding: 0,
+                margin: 0,
+                overflow: "hidden",
                 background,
                 color: foreground,
-                resize: "both",
+                resize: "none",
                 zIndex: 1000,
               }}
             />

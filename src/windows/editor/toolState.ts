@@ -41,6 +41,14 @@ export interface TextShape extends ShapeBase {
   // text at the same point the textarea was softly wrapping it while typing.
   // Undefined for text that's never been through an edit/commit yet.
   width?: number;
+  // A callout arrow pointing away from this text. Its tail is always
+  // computed from this shape's own x/y (so dragging the text drags the
+  // whole arrow with it) — only the tip (`arrowEnd`) is stored, in the same
+  // native/image pixel space as x/y. Unchecking "Arrow" sets `arrow: false`
+  // but keeps `arrowEnd` around so re-checking restores the same arrow
+  // instead of resetting it to the default position.
+  arrow?: boolean;
+  arrowEnd?: { x: number; y: number };
 }
 
 export interface ImageShape extends ShapeBase {

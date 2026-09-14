@@ -14,8 +14,8 @@
     "windows": [
       {
         "title": "Snap",
-        "width": 800,
-        "height": 600,
+        "width": 1,
+        "height": 1,
         "visible": false
       },
       {
@@ -33,9 +33,9 @@
         "label": "editor",
         "title": "Snap Editor",
         "url": "index.html#/editor",
-        "width": 900,
+        "width": 970,
         "height": 700,
-        "minWidth": 900,
+        "minWidth": 970,
         "visible": false,
         "hiddenTitle": true,
         "decorations": false,

@@ -20,6 +20,7 @@ interface Props {
   strokeWidth: number;
   showTextBackground: boolean;
   textBackground: boolean;
+  textArrow: boolean;
   // True when the selected shape is a floating screenshot, which has no use
   // for a stroke color or width.
   disableStyleControls: boolean;
@@ -28,6 +29,7 @@ interface Props {
   onColorChange: (c: string) => void;
   onStrokeWidthChange: (w: number) => void;
   onTextBackgroundChange: (v: boolean) => void;
+  onTextArrowChange: (v: boolean) => void;
 }
 
 export default function Toolbar({
@@ -36,12 +38,14 @@ export default function Toolbar({
   strokeWidth,
   showTextBackground,
   textBackground,
+  textArrow,
   disableStyleControls,
   onToolChange,
   onAddScreenshot,
   onColorChange,
   onStrokeWidthChange,
   onTextBackgroundChange,
+  onTextArrowChange,
 }: Props) {
   return (
     <div className="toolbar">
@@ -87,14 +91,24 @@ export default function Toolbar({
         onChange={(e) => onStrokeWidthChange(Number(e.target.value))}
       />
       {showTextBackground && (
-        <label className="text-background-toggle" title="Text background">
-          <input
-            type="checkbox"
-            checked={textBackground}
-            onChange={(e) => onTextBackgroundChange(e.target.checked)}
-          />
-          Background
-        </label>
+        <div className="text-shape-toggles">
+          <label className="text-background-toggle" title="Text background">
+            <input
+              type="checkbox"
+              checked={textBackground}
+              onChange={(e) => onTextBackgroundChange(e.target.checked)}
+            />
+            Background
+          </label>
+          <label className="text-background-toggle" title="Callout arrow pointing away from this text">
+            <input
+              type="checkbox"
+              checked={textArrow}
+              onChange={(e) => onTextArrowChange(e.target.checked)}
+            />
+            Arrow
+          </label>
+        </div>
       )}
     </div>
   );
