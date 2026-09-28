@@ -75,17 +75,42 @@ jobs:
           security list-keychain -d user -s "$KEYCHAIN_PATH" "$(security list-keychains -d user | sed 's/"//g')"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
+      # APPLE_ID/APPLE_PASSWORD/APPLE_TEAM_ID being present is what makes
+      # `tauri build` notarize+staple the .app automatically (it silently
+      # skips notarization if any of the three are missing) — it does NOT
+      # touch the .dmg it also produces, which is handled separately below.
       - name: Build aarch64
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npm run tauri build -- --target aarch64-apple-darwin
 
       - name: Build x86_64
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npm run tauri build -- --target x86_64-apple-darwin
+
+      # Tauri only notarizes the .app it bundles, not the .dmg — an
+      # unstapled DMG still gets flagged by Gatekeeper when downloaded and
+      # mounted, even though the .app inside it is fine.
+      - name: Notarize and staple DMGs
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for dmg in src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg \
+                     src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg; do
+            xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+            xcrun stapler staple "$dmg"
+          done
 
       - name: Assemble release assets
         env:
