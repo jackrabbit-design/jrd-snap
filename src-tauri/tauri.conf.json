@@ -104,7 +104,7 @@
       "binaries/ffmpeg"
     ],
     "macOS": {
-      "signingIdentity": "Snap Local Code Signing"
+      "signingIdentity": "Developer ID Application: Cara Ogar (G97K7C6D43)"
     },
     "createUpdaterArtifacts": true
   },
