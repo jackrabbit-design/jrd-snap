@@ -30,6 +30,14 @@ export default function OverlayApp() {
   const [start, setStart] = useState<Point | null>(null);
   const [current, setCurrent] = useState<Point | null>(null);
   const dragging = useRef(false);
+  // While held during a drag, mouse movement repositions the whole
+  // selection box (both corners shift together) instead of resizing it —
+  // matching Space during macOS's native Cmd+Shift+4 area selection.
+  // lastMouse tracks the previous move's point so the box translates by the
+  // exact delta each frame, seamlessly whether or not Space is currently
+  // held — no jump when it's pressed or released mid-drag.
+  const spaceHeld = useRef(false);
+  const lastMouse = useRef<Point | null>(null);
 
   const [phase, setPhase] = useState<Phase>("select");
   const [purpose, setPurpose] = useState<Purpose>("screenshot");
@@ -97,18 +105,29 @@ export default function OverlayApp() {
 
   function handleMouseDown(e: React.MouseEvent) {
     dragging.current = true;
+    lastMouse.current = { x: e.clientX, y: e.clientY };
     setStart({ x: e.clientX, y: e.clientY });
     setCurrent({ x: e.clientX, y: e.clientY });
   }
 
   function handleMouseMove(e: React.MouseEvent) {
     if (!dragging.current) return;
-    setCurrent({ x: e.clientX, y: e.clientY });
+    const point = { x: e.clientX, y: e.clientY };
+    if (spaceHeld.current && lastMouse.current) {
+      const dx = point.x - lastMouse.current.x;
+      const dy = point.y - lastMouse.current.y;
+      setStart((s) => (s ? { x: s.x + dx, y: s.y + dy } : s));
+      setCurrent((c) => (c ? { x: c.x + dx, y: c.y + dy } : c));
+    } else {
+      setCurrent(point);
+    }
+    lastMouse.current = point;
   }
 
   async function handleMouseUp() {
     if (!dragging.current || !start || !current) return;
     dragging.current = false;
+    lastMouse.current = null;
     const x = Math.min(start.x, current.x);
     const y = Math.min(start.y, current.y);
     const width = Math.abs(current.x - start.x);
@@ -170,7 +189,14 @@ export default function OverlayApp() {
       await invoke("hide_overlay");
       await invoke("reset_capture_icon");
       if (wasFloating) await invoke("cancel_floating_capture");
+    } else if (e.key === " " && dragging.current) {
+      e.preventDefault();
+      spaceHeld.current = true;
     }
+  }
+
+  function handleKeyUp(e: React.KeyboardEvent) {
+    if (e.key === " ") spaceHeld.current = false;
   }
 
   async function handleStartRecording() {
@@ -216,6 +242,7 @@ export default function OverlayApp() {
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onKeyDown={handleKeyDown}
+      onKeyUp={handleKeyUp}
       className="overlay-root"
     >
       {rect && phase === "select" && (

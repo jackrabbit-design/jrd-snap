@@ -372,8 +372,8 @@ pub async fn upload_file_from_path(app: AppHandle, path: String) -> Result<Strin
     let name = path
         .file_name()
         .and_then(|n| n.to_str())
-        .ok_or("dropped file has no valid filename")?
-        .to_string();
+        .ok_or("dropped file has no valid filename")?;
+    let name = filename::sanitize_filename(name);
     let extension = path
         .extension()
         .and_then(|e| e.to_str())

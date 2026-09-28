@@ -32,6 +32,34 @@ pub fn generate_filename(prefix: Option<&str>, extension: &str) -> String {
     }
 }
 
+// Used for filenames dropped onto the drop-upload window, which — unlike
+// generate_filename's own output — come from the user's own filesystem and
+// can contain spaces or other characters that are technically legal in an
+// S3 object key but produce a broken (un-percent-encoded) URL once glued
+// into a plain string in upload.rs's build_public_url. Sanitizing here
+// keeps the original name recognizable while guaranteeing the resulting
+// link actually works everywhere it gets pasted.
+pub fn sanitize_filename(name: &str) -> String {
+    let mut result = String::with_capacity(name.len());
+    let mut last_was_dash = false;
+    for c in name.chars() {
+        let safe = c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-';
+        if safe {
+            result.push(c);
+            last_was_dash = c == '-';
+        } else if !last_was_dash {
+            result.push('-');
+            last_was_dash = true;
+        }
+    }
+    let trimmed = result.trim_matches('-');
+    if trimmed.is_empty() {
+        "file".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -105,5 +133,30 @@ mod tests {
             .unwrap()
             .as_millis();
         assert!(decoded <= now && now - decoded < 1000);
+    }
+
+    #[test]
+    fn sanitize_replaces_spaces_with_a_single_dash() {
+        assert_eq!(sanitize_filename("Screen Shot 2024.png"), "Screen-Shot-2024.png");
+    }
+
+    #[test]
+    fn sanitize_collapses_runs_of_unsafe_characters() {
+        assert_eq!(sanitize_filename("a   b###c.txt"), "a-b-c.txt");
+    }
+
+    #[test]
+    fn sanitize_trims_leading_and_trailing_dashes() {
+        assert_eq!(sanitize_filename("  leading and trailing  .png"), "leading-and-trailing-.png");
+    }
+
+    #[test]
+    fn sanitize_leaves_already_safe_names_unchanged() {
+        assert_eq!(sanitize_filename("already-safe_name.v2.zip"), "already-safe_name.v2.zip");
+    }
+
+    #[test]
+    fn sanitize_falls_back_when_nothing_safe_remains() {
+        assert_eq!(sanitize_filename("😀😀😀"), "file");
     }
 }
