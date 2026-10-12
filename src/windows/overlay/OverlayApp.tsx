@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { startRecording } from "../../lib/api";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { notify, startRecording } from "../../lib/api";
 
 interface Point {
   x: number;
@@ -24,7 +25,7 @@ interface DisplayRect {
 }
 
 type Phase = "select" | "confirm" | "recording";
-type Purpose = "screenshot" | "record" | "floating";
+type Purpose = "screenshot" | "record" | "floating" | "upload";
 
 export default function OverlayApp() {
   const [start, setStart] = useState<Point | null>(null);
@@ -135,7 +136,7 @@ export default function OverlayApp() {
     setStart(null);
     setCurrent(null);
     if (width < 2 || height < 2) {
-      if (purpose === "screenshot" || purpose === "floating") {
+      if (purpose === "screenshot" || purpose === "floating" || purpose === "upload") {
         await invoke("hide_overlay");
         await invoke("reset_capture_icon");
         if (purpose === "floating") await invoke("cancel_floating_capture");
@@ -172,6 +173,14 @@ export default function OverlayApp() {
     await new Promise((resolve) => setTimeout(resolve, 150));
     if (purpose === "floating") {
       await invoke("submit_floating_capture", { rect });
+    } else if (purpose === "upload") {
+      try {
+        const url = await invoke<string>("submit_area_upload", { rect });
+        await writeText(url);
+        await notify(`Uploaded — link copied to clipboard\n${url}`);
+      } catch (e) {
+        await notify(`Upload failed: ${e}`);
+      }
     } else {
       await invoke("submit_area_capture", { rect });
     }

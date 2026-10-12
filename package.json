@@ -23,7 +23,6 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-konva": "^19.2.5",
-    "roughjs": "^4.6.6",
     "use-image": "^1.1.4"
   },
   "devDependencies": {

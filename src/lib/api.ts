@@ -38,6 +38,8 @@ export interface HotkeySettings {
   captureArea: string;
   captureFull: string;
   recordArea: string;
+  toggleDropWindow: string;
+  captureAreaUpload: string;
 }
 
 export function getHotkeySettings(): Promise<HotkeySettings> {

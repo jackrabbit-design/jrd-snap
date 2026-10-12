@@ -183,6 +183,11 @@ pub fn show_overlay_for_recording(app: AppHandle) -> Result<(), String> {
     show_overlays(&app, "record")
 }
 
+#[tauri::command]
+pub fn show_overlay_for_upload(app: AppHandle) -> Result<(), String> {
+    show_overlays(&app, "upload")
+}
+
 // Called by the frontend at the explicit cancel points that don't otherwise
 // reach the backend (Escape, clicking without dragging, the record confirm
 // panel's Cancel button) — everything else that ends a capture (upload
@@ -234,6 +239,26 @@ pub fn submit_area_capture(window: WebviewWindow, rect: CaptureRect) -> Result<(
             Err(e)
         }
     }
+}
+
+// Mirrors submit_area_capture, but uploads the capture directly (reusing
+// the same upload_bytes helper the editor's upload button and the
+// drop-upload window both use) instead of opening the editor — the overlay
+// handles the clipboard-copy/notify feedback itself once this resolves,
+// same as it already does for the drop-upload window's uploads.
+#[tauri::command]
+pub async fn submit_area_upload(window: WebviewWindow, rect: CaptureRect) -> Result<String, String> {
+    let app = window.app_handle().clone();
+    let index = overlay_monitor_index(&window)?;
+    let bytes = match capture::capture_area_png(rect, index) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            crate::notify_capture_failed(&app, &e);
+            crate::set_capture_tray_icon(&app, crate::CaptureIconState::Default);
+            return Err(e);
+        }
+    };
+    upload_bytes(&app, bytes, "png").await
 }
 
 // Invoked from the editor window itself (via its "add screenshot" tool) —

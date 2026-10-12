@@ -8,6 +8,7 @@ use tauri::{
 pub struct TrayMenuItems {
     pub capture_area: MenuItem<tauri::Wry>,
     pub capture_full: MenuItem<tauri::Wry>,
+    pub capture_area_upload: MenuItem<tauri::Wry>,
     pub record_area: MenuItem<tauri::Wry>,
     pub stop_recording: MenuItem<tauri::Wry>,
     pub reopen_last_capture: MenuItem<tauri::Wry>,
@@ -82,6 +83,13 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         true,
         Some(&hotkeys.capture_full),
     )?;
+    let capture_area_upload = MenuItem::with_id(
+        app,
+        "capture_area_upload",
+        "Capture Area and Upload",
+        true,
+        Some(&hotkeys.capture_area_upload),
+    )?;
     let record_area = MenuItem::with_id(
         app,
         "record_area",
@@ -122,6 +130,7 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         &[
             &capture_area,
             &capture_full,
+            &capture_area_upload,
             &record_area,
             &stop_recording,
             &reopen_last_capture,
@@ -136,6 +145,7 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     app.manage(TrayMenuItems {
         capture_area: capture_area.clone(),
         capture_full: capture_full.clone(),
+        capture_area_upload: capture_area_upload.clone(),
         record_area: record_area.clone(),
         stop_recording: stop_recording.clone(),
         reopen_last_capture: reopen_last_capture.clone(),
@@ -165,6 +175,11 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             "capture_area" => {
                 if let Err(e) = crate::commands::show_overlay(app.clone()) {
                     eprintln!("show_overlay failed: {e}");
+                }
+            }
+            "capture_area_upload" => {
+                if let Err(e) = crate::commands::show_overlay_for_upload(app.clone()) {
+                    eprintln!("show_overlay_for_upload failed: {e}");
                 }
             }
             "capture_full" => {
@@ -249,6 +264,12 @@ pub(crate) fn update_tray_accelerators(app: &AppHandle, hotkeys: &HotkeySettings
         .capture_full
         .set_accelerator(Some(&hotkeys.capture_full));
     let _ = items
+        .capture_area_upload
+        .set_accelerator(Some(&hotkeys.capture_area_upload));
+    let _ = items
         .record_area
         .set_accelerator(Some(&hotkeys.record_area));
+    let _ = items
+        .toggle_drop_window
+        .set_accelerator(Some(&hotkeys.toggle_drop_window));
 }

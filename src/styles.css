@@ -23,7 +23,7 @@
   :root {
     --bg: #1e1e20;
     --bg-elevated: #2a2a2d;
-    --fg: #f2f2f3;
+    --fg: #eaeaea;
     --fg-muted: #9a9a9e;
     --border: #3d3d40;
     --accent: #00ACD9;
@@ -246,8 +246,8 @@ input[type="checkbox"]:checked::after {
 }
 
 #logo {
-  width: 250px;
-  margin: 40px auto 20px;
+  width: 200px;
+  margin: 30px auto 20px;
 }
 
 .settings-header {
@@ -467,12 +467,43 @@ input[type="checkbox"]:checked::after {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 7px;
+  padding: 5px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--fg);
   cursor: pointer;
+  width: 32px;
+  height: 32px;
+  svg {
+    --size: 18px;
+    width: var(--size);
+    height: var(--size);
+    &.tool-select {
+      --size: 14px;
+    }
+    &.tool-arrow {
+      --size: 13px;
+    }
+    &.tool-line {
+      --size: 14px;
+    }
+    &.tool-ellipse {
+      --size: 16px;
+    }
+    &.tool-pen {
+      --size: 17px;
+    }
+    &.tool-text {
+      --size: 16px;
+    }
+    &.tool-blur {
+      --size: 17px;
+    }
+    &.tool-crop {
+      --size: 16px;
+    }
+  }
 }
 
 .tool-button:hover {
@@ -480,10 +511,11 @@ input[type="checkbox"]:checked::after {
 }
 
 .tool-button.active {
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
-  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 20%, transparent);
   color: var(--accent);
   font-weight: 600;
+  box-shadow: 0 2px 4px #0004;
 }
 
 .toolbar-divider {

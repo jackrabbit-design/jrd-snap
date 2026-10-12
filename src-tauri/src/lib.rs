@@ -108,6 +108,39 @@ pub(crate) fn register_shortcuts(app: &tauri::AppHandle) -> Result<(), String> {
         }
     })
     .map_err(|e| format!("record_area shortcut \"{}\": {e}", hotkeys.record_area))?;
+    gs.on_shortcut(
+        hotkeys.toggle_drop_window.as_str(),
+        |app, _shortcut, event| {
+            if event.state() == ShortcutState::Pressed {
+                if let Some(win) = app.get_webview_window("drop-upload") {
+                    let currently_visible = win.is_visible().unwrap_or(false);
+                    tray::set_drop_window_visible(app, !currently_visible);
+                }
+            }
+        },
+    )
+    .map_err(|e| {
+        format!(
+            "toggle_drop_window shortcut \"{}\": {e}",
+            hotkeys.toggle_drop_window
+        )
+    })?;
+    gs.on_shortcut(
+        hotkeys.capture_area_upload.as_str(),
+        |app, _shortcut, event| {
+            if event.state() == ShortcutState::Pressed {
+                if let Err(e) = commands::show_overlay_for_upload(app.clone()) {
+                    eprintln!("show_overlay_for_upload failed: {e}");
+                }
+            }
+        },
+    )
+    .map_err(|e| {
+        format!(
+            "capture_area_upload shortcut \"{}\": {e}",
+            hotkeys.capture_area_upload
+        )
+    })?;
     Ok(())
 }
 
@@ -397,9 +430,11 @@ pub fn run() {
             commands::save_hotkey_settings,
             commands::show_overlay,
             commands::show_overlay_for_recording,
+            commands::show_overlay_for_upload,
             commands::hide_overlay,
             commands::hide_other_overlays,
             commands::submit_area_capture,
+            commands::submit_area_upload,
             commands::start_floating_capture,
             commands::submit_floating_capture,
             commands::cancel_floating_capture,

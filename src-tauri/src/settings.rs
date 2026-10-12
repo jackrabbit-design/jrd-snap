@@ -108,6 +108,8 @@ pub struct HotkeySettings {
     pub capture_area: String,
     pub capture_full: String,
     pub record_area: String,
+    pub toggle_drop_window: String,
+    pub capture_area_upload: String,
 }
 
 impl Default for HotkeySettings {
@@ -119,6 +121,8 @@ impl Default for HotkeySettings {
             capture_area: "Control+D".into(),
             capture_full: "Control+Shift+D".into(),
             record_area: "Control+R".into(),
+            toggle_drop_window: "Control+U".into(),
+            capture_area_upload: "Control+E".into(),
         }
     }
 
@@ -128,6 +132,8 @@ impl Default for HotkeySettings {
             capture_area: "Control+Alt+D".into(),
             capture_full: "Control+Shift+D".into(),
             record_area: "Control+Alt+R".into(),
+            toggle_drop_window: "Control+Alt+U".into(),
+            capture_area_upload: "Control+Alt+E".into(),
         }
     }
 }
@@ -239,6 +245,8 @@ mod tests {
             capture_area: "CommandOrControl+Shift+9".into(),
             capture_full: "CommandOrControl+Shift+8".into(),
             record_area: "CommandOrControl+Shift+7".into(),
+            toggle_drop_window: "CommandOrControl+Shift+6".into(),
+            capture_area_upload: "CommandOrControl+Shift+5".into(),
         };
         save_hotkeys(dir.path(), &hotkeys).unwrap();
         assert_eq!(load_hotkeys(dir.path()), hotkeys);

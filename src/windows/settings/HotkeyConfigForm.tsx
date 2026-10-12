@@ -5,8 +5,8 @@ import { getHotkeySettings, saveHotkeySettings, type HotkeySettings } from "../.
 // the initial state before the real settings load from the backend.
 const IS_MAC = navigator.platform.toLowerCase().includes("mac");
 const DEFAULT: HotkeySettings = IS_MAC
-  ? { captureArea: "Control+D", captureFull: "Control+Shift+D", recordArea: "Control+R" }
-  : { captureArea: "Control+Alt+D", captureFull: "Control+Shift+D", recordArea: "Control+Alt+R" };
+  ? { captureArea: "Control+D", captureFull: "Control+Shift+D", recordArea: "Control+R", toggleDropWindow: "Control+U", captureAreaUpload: "Control+E" }
+  : { captureArea: "Control+Alt+D", captureFull: "Control+Shift+D", recordArea: "Control+Alt+R", toggleDropWindow: "Control+Alt+U", captureAreaUpload: "Control+Alt+E" };
 
 const MODIFIER_KEYS = new Set(["Control", "Meta", "Alt", "Shift"]);
 
@@ -115,9 +115,19 @@ export default function HotkeyConfigForm() {
         onChange={(v) => setHotkeys((h) => ({ ...h, captureFull: v }))}
       />
       <HotkeyRecorderField
+        label="Capture Area and Upload"
+        value={hotkeys.captureAreaUpload}
+        onChange={(v) => setHotkeys((h) => ({ ...h, captureAreaUpload: v }))}
+      />
+      <HotkeyRecorderField
         label="Record Area"
         value={hotkeys.recordArea}
         onChange={(v) => setHotkeys((h) => ({ ...h, recordArea: v }))}
+      />
+      <HotkeyRecorderField
+        label="Toggle Drop Window"
+        value={hotkeys.toggleDropWindow}
+        onChange={(v) => setHotkeys((h) => ({ ...h, toggleDropWindow: v }))}
       />
       <div className="field">
         <div className="label-flex"></div>
